@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Terapeak Collector</title>
+  <style>
+    body { font-family: Arial, sans-serif; width: 320px; padding: 12px; font-size: 13px; color: #222; }
+    h2 { margin: 0 0 10px; font-size: 15px; color: #3563eb; }
+    .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; }
+    .label { color: #666; }
+    .value { font-weight: bold; }
+    .status-ok { color: #28a745; font-weight: bold; }
+    .status-err { color: #dc3545; font-weight: bold; }
+    .status-pending { color: #888; }
+    #debug { margin-top: 10px; font-size: 11px; color: #888; word-break: break-all; }
+    .instructions { background: #f5f5f5; padding: 8px; border-radius: 4px; margin-top: 10px; font-size: 12px; line-height: 1.5; }
+    .instructions b { color: #3563eb; }
+  </style>
+</head>
+<body>
+  <h2>Terapeak Collector</h2>
+  <div id="last-data">
+    <div class="row"><span class="label">Status</span><span id="status" class="status-pending">checking...</span></div>
+    <div class="row"><span class="label">Last keyword</span><span id="keyword" class="value">—</span></div>
+    <div class="row"><span class="label">Avg sold price</span><span id="avg_sold" class="value">—</span></div>
+    <div class="row"><span class="label">Sell-through</span><span id="sell_through" class="value">—</span></div>
+    <div class="row"><span class="label">Total sold</span><span id="total_sold" class="value">—</span></div>
+    <div class="row"><span class="label">Last sent</span><span id="last_time" class="value">—</span></div>
+  </div>
+
+  <div class="instructions">
+    <b>How to use:</b><br>
+    1. Go to <b>Seller Hub → Research</b><br>
+    2. Search for any product keyword<br>
+    3. This extension auto-captures the sold data and sends it to your agent<br>
+    4. Search 20–30 keywords — the agent uses this data for all future pricing
+  </div>
+
+  <div id="debug"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

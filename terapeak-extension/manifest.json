@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Terapeak Research Collector",
+  "version": "1.0",
+  "description": "Sends Terapeak sold-price data to your eBay agent while you browse Seller Hub.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": [
+    "https://www.ebay.co.uk/sh/research*",
+    "http://204.168.194.157:8765/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.ebay.co.uk/sh/research*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Terapeak Collector"
+  }
+}
