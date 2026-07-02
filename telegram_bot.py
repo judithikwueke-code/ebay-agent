@@ -17,14 +17,16 @@ import sqlite3
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import os
+
 import requests
 
 from db import DB_PATH
 
 log = logging.getLogger(__name__)
 
-TOKEN = "8583121219:AAFbpza_GbFcfzjp8_mDZAGgWbZ5sAS9Z14"
-CHAT_ID = "7681216735"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 LONDON = ZoneInfo("Europe/London")
 
 

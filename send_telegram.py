@@ -1,7 +1,9 @@
+import os
+
 import requests
 
-TOKEN = "8583121219:AAFbpza_GbFcfzjp8_mDZAGgWbZ5sAS9Z14"
-CHAT_ID = "7681216735"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 message = (
     "First eBay Sale - Action Needed!\n\n"

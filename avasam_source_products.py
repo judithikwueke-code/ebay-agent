@@ -7,6 +7,7 @@ These products then appear via the Avasam API for supplier.py to use.
 Run once to bootstrap the Avasam catalogue.
 Reports progress and failures to Telegram.
 """
+import os
 import time
 import logging
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
@@ -15,8 +16,8 @@ import requests
 log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-TOKEN = "8583121219:AAFbpza_GbFcfzjp8_mDZAGgWbZ5sAS9Z14"
-CHAT_ID = "7681216735"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 AVASAM_EMAIL = "07487863927n@gmail.com"
 AVASAM_PASS = None  # Will try env / ask via Telegram if None

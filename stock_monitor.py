@@ -7,6 +7,7 @@ For each active CJ listing:
   3. If not found OR out of stock: pause the eBay listing (qty→0) + Telegram alert
   4. If previously paused and now back in stock: re-enable listing (qty→5)
 """
+import os
 import re
 import sqlite3
 import time
@@ -19,8 +20,8 @@ from db import DB_PATH
 
 log = logging.getLogger(__name__)
 
-TELEGRAM_BOT_TOKEN = "8583121219:AAFbpza_GbFcfzjp8_mDZAGgWbZ5sAS9Z14"
-TELEGRAM_CHAT_ID = "7681216735"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 LOW_STOCK_THRESHOLD = 3
 RESTOCK_QUANTITY = 5

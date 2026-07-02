@@ -3,11 +3,12 @@ Automated supplier registration via Playwright.
 Attempts to register with BigBuy, Wholesale2B, Spocket.
 Sends Telegram message with results + any steps requiring manual action.
 """
+import os
 import time, traceback
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
-TOKEN = "8583121219:AAFbpza_GbFcfzjp8_mDZAGgWbZ5sAS9Z14"
-CHAT_ID = "7681216735"
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 EMAIL = "07487863927n@gmail.com"
 BUSINESS_NAME = "Yagz Ltd"
 FIRST = "Judith"

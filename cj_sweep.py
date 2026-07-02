@@ -11,6 +11,8 @@ import logging
 import sqlite3
 import time
 
+import os
+
 import requests
 
 from db import DB_PATH
@@ -20,8 +22,8 @@ log = logging.getLogger(__name__)
 CJ_EMAIL = ""
 CJ_KEY = ""
 
-TELEGRAM_TOKEN = "8583121219:AAFbpza_GbFcfzjp8_mDZAGgWbZ5sAS9Z14"
-TELEGRAM_CHAT = "7681216735"
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT = os.getenv("TELEGRAM_CHAT_ID")
 
 # Price range: CJ sell price in GBP (we'll mark up 2.2–3x)
 MIN_CJ_PRICE = 3.0
