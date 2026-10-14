@@ -18,7 +18,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from config import (
     RESEARCH_HOUR, RESEARCH_HOUR_EVENING, HEALTH_CHECK_HOUR,
     ORDER_POLL_MINUTES, SUPPLIER_TRACKING_HOURS,
-    DAILY_LISTING_CAP, CATEGORIES, SUPPLIER_PRIORITY,
+    DAILY_LISTING_CAP, CATEGORIES, SUPPLIER_PRIORITY, PRICING_MODE, MAX_PRICE_PREMIUM,
 )
 from db import init_db, is_product_already_listed
 from research import find_opportunities
@@ -121,7 +121,7 @@ def research_and_list(dry_run: bool = False):
         # If we can't fit in that band, we cannot compete — skip rather than list invisibly.
         market_price = opp["avg_price_gbp"]
         min_our_price = match.get("min_sell_price_gbp", 0)
-        if not is_furniture and min_our_price > market_price * 1.25:
+        if not is_furniture and min_our_price > market_price * (MAX_PRICE_PREMIUM if PRICING_MODE == "cost_plus" else 1.25):
             log.info(
                 f"Price gate FAIL '{opp['keyword']}': our min £{min_our_price:.2f} "
                 f"vs market £{market_price:.2f} (+{(min_our_price/market_price-1)*100:.0f}%) — skip"

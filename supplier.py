@@ -13,7 +13,7 @@ import wholesalebeds_catalog
 from config import (
     COSTWAY_API_KEY, BIGBUY_API_KEY, CJ_EMAIL, CJ_API_KEY,
     get_avasam_token,
-    MIN_NET_MARGIN_PCT, SUPPLIER_PRIORITY, FURNITURE_ALLOWED_SUPPLIERS, SUPPLIER_COST_CAP_RATIO, VAT_RATE,
+    MIN_NET_MARGIN_PCT, SUPPLIER_PRIORITY, FURNITURE_ALLOWED_SUPPLIERS, SUPPLIER_COST_CAP_RATIO, VAT_RATE, PRICING_MODE, MAX_PRICE_PREMIUM,
     calculate_ebay_fees, total_cost_with_vat,
 )
 
@@ -592,9 +592,9 @@ def find_best_supplier(keyword: str, target_sell_price_gbp: float, is_furniture:
                 # For UK-warehouse furniture suppliers, don't discard when the market avg
                 # is below our minimum viable price. Instead compute the actual floor price
                 # and return it flagged — main.py will list above market avg for quality positioning.
-                if is_furniture and supplier_key in FURNITURE_ALLOWED_SUPPLIERS:
+                if (is_furniture and supplier_key in FURNITURE_ALLOWED_SUPPLIERS) or PRICING_MODE == "cost_plus":
                     min_price = _min_viable_price(c["cost_gbp"], c["shipping_gbp"], fee_key)
-                    if min_price <= target_sell_price_gbp * 1.30:
+                    if min_price <= target_sell_price_gbp * (MAX_PRICE_PREMIUM if PRICING_MODE == "cost_plus" else 1.30):
                         floor_margin = _calc_margin(c["cost_gbp"], c["shipping_gbp"], min_price, fee_key)
                         c["margin_pct"] = round(floor_margin, 2)
                         c["total_cost_gbp"] = round(c["cost_gbp"] + c["shipping_gbp"], 2)

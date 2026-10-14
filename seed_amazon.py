@@ -14,7 +14,7 @@ import logging
 import re
 import sys
 
-from config import CATEGORIES, VAT_RATE
+from config import CATEGORIES, VAT_RATE, PRICING_MODE, MAX_PRICE_PREMIUM
 from db import init_db, is_product_already_listed
 from lister import create_listing
 from research import _market_snapshot, _is_vero, _is_policy_blocked
@@ -74,8 +74,9 @@ def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = Fal
     prod["min_sell_price_gbp"] = min_price
     log.info(f"{asin}: Amazon £{shelf:.2f} inc VAT | eBay market £{market} | "
              f"floor £{min_price} | margin at market {margin}%")
-    if min_price > market * 1.25:
-        log.warning(f"{asin}: floor price £{min_price} is >25% above market £{market} - not competitive, skipping")
+    ceiling = MAX_PRICE_PREMIUM if PRICING_MODE == "cost_plus" else 1.25
+    if min_price > market * ceiling:
+        log.warning(f"{asin}: floor price £{min_price} is >{round((ceiling - 1) * 100)}% above market £{market} - not competitive, skipping")
         return False
 
     samples = snap["sample"]

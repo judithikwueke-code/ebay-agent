@@ -216,6 +216,11 @@ MAX_ACTIVE_COMPETITORS = 25000  # max active identical listings on eBay UK
 MIN_NET_MARGIN_PCT = float(os.getenv("MIN_NET_MARGIN_PCT", "25"))  # minimum profit margin after all fees
 # Supplier cost (before VAT/fees) must be under this share of the eBay price to be considered.
 SUPPLIER_COST_CAP_RATIO = float(os.getenv("SUPPLIER_COST_CAP_RATIO", "0.6"))
+# "market" (default): price at the eBay market median and require the margin to hold there.
+# "cost_plus": price at the market median when that already clears the margin, otherwise at
+# our own margin-floor price, as long as it is within MAX_PRICE_PREMIUM x the market median.
+PRICING_MODE = os.getenv("PRICING_MODE", "market")
+MAX_PRICE_PREMIUM = float(os.getenv("MAX_PRICE_PREMIUM", "1.25"))
 
 # Declared listing quantity for dropshipped (not physically held) stock.
 # Kept low on a new account — a brand-new seller showing 50 units of
