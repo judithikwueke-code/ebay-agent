@@ -222,6 +222,65 @@ def check_amazon_listing(asin: str) -> dict:
                 pass
 
 
+def get_product(asin: str) -> dict | None:
+    """
+    Full product-page read for one ASIN (used when a product is supplied by hand).
+    Returns a supplier-style dict (cost_gbp is the VAT-inclusive shelf price), or None.
+    """
+    if time.time() < _blocked_until:
+        return None
+    with _lock:
+        page = None
+        try:
+            page = _get_context().new_page()
+            if not _goto(page, f"https://www.amazon.co.uk/dp/{asin}"):
+                return None
+            time.sleep(random.uniform(1.0, 2.0))
+            if page.locator("#productTitle").count() == 0:
+                return None
+            title = page.locator("#productTitle").inner_text().strip()
+            price = None
+            for sel in ("#corePrice_feature_div .a-offscreen", "#corePriceDisplay_desktop_feature_div .a-offscreen",
+                        ".a-price .a-offscreen"):
+                loc = page.locator(sel)
+                if loc.count():
+                    price = _price(loc.first.text_content())
+                    if price:
+                        break
+            images = []
+            if page.locator("#landingImage").count():
+                import json as _json
+                try:
+                    dyn = _json.loads(page.locator("#landingImage").first.get_attribute("data-a-dynamic-image") or "{}")
+                    images = sorted(dyn, key=lambda u: -max(dyn[u]))[:1]
+                except Exception:
+                    pass
+            for t in page.locator("#altImages img").all()[:8]:
+                src = _hires(t.get_attribute("src") or "")
+                if src and "sprite" not in src and "play-icon" not in src and src not in images:
+                    images.append(src)
+            bullets = [b.inner_text().strip() for b in page.locator("#feature-bullets li").all()[:8]]
+            avail = page.locator("#availability").inner_text().lower() if page.locator("#availability").count() else ""
+            in_stock = page.locator("#add-to-cart-button, #buy-now-button").count() > 0 and "unavailable" not in avail
+            prime = page.locator("i.a-icon-prime").count() > 0
+            return {
+                "supplier": "amazon", "product_id": asin, "title": title,
+                "cost_gbp": price or 0.0, "shipping_gbp": 0.0 if prime else DEFAULT_PAID_DELIVERY_GBP,
+                "delivery_days": 3 if prime else 5, "images": images[:8],
+                "description": " ".join(bullets), "uk_warehouse": True, "in_stock": in_stock,
+            }
+        except Exception as e:
+            log.warning(f"Amazon product read failed for {asin}: {e}")
+            close()
+            return None
+        finally:
+            try:
+                if page:
+                    page.close()
+            except Exception:
+                pass
+
+
 if __name__ == "__main__":
     import json
     import sys

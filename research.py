@@ -150,6 +150,9 @@ _POLICY_BLOCKED = {
     # Adult
     "tobacco", "cigarette", "e-cigarette", "vape juice", "vape liquid",
     "drug", "steroid", "anabolic",
+    # Medicines, supplements and veterinary products (trend discovery surfaces these)
+    "capsules", "tablets", "supplement", "vitamin", "medicin", "ointment", "otic",
+    "gastric", "ulcer", "testosterone", "testonax", "benfotiamine", "wormer",
 }
 
 
