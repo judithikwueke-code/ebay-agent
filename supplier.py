@@ -13,7 +13,7 @@ import wholesalebeds_catalog
 from config import (
     COSTWAY_API_KEY, BIGBUY_API_KEY, CJ_EMAIL, CJ_API_KEY,
     get_avasam_token,
-    MIN_NET_MARGIN_PCT, SUPPLIER_PRIORITY, FURNITURE_ALLOWED_SUPPLIERS,
+    MIN_NET_MARGIN_PCT, SUPPLIER_PRIORITY, FURNITURE_ALLOWED_SUPPLIERS, SUPPLIER_COST_CAP_RATIO, VAT_RATE,
     calculate_ebay_fees, total_cost_with_vat,
 )
 
@@ -532,7 +532,24 @@ def _min_viable_price(cost_gbp: float, shipping_gbp: float, fee_key: str) -> flo
 # Main matcher
 # ---------------------------------------------------------------------------
 
+def _search_amazon(keyword: str, max_price_gbp: float) -> list[dict]:
+    """
+    Amazon shows VAT-inclusive retail prices, but the margin maths (total_cost_with_vat)
+    expects ex-VAT supplier prices and adds VAT itself. Convert here so VAT is counted once:
+    non-registered sellers end up with the real shelf price, registered ones with the net price.
+    max_price_gbp is a shelf-price ceiling, so scale it the same way before filtering.
+    """
+    from amazon_source import search_amazon
+    out = []
+    for c in search_amazon(keyword, max_price_gbp * (1 + VAT_RATE)):
+        c["cost_gbp"] = round(c["cost_gbp"] / (1 + VAT_RATE), 2)
+        c["shipping_gbp"] = round(c["shipping_gbp"] / (1 + VAT_RATE), 2)
+        out.append(c)
+    return out
+
+
 SUPPLIER_FNS = {
+    "amazon":             _search_amazon,
     "wholesalebeds":      _search_wholesalebeds,
     "avasam":             _search_avasam,
     "costway":            _search_costway,
@@ -566,9 +583,9 @@ def find_best_supplier(keyword: str, target_sell_price_gbp: float, is_furniture:
             continue
 
         if supplier_key == "wholesalebeds":
-            candidates = search_fn(keyword, target_sell_price_gbp * 0.6, category=category)
+            candidates = search_fn(keyword, target_sell_price_gbp * SUPPLIER_COST_CAP_RATIO, category=category)
         else:
-            candidates = search_fn(keyword, target_sell_price_gbp * 0.6)  # cost must be <60% of sell price
+            candidates = search_fn(keyword, target_sell_price_gbp * SUPPLIER_COST_CAP_RATIO)  # cost cap vs sell price
         for c in candidates:
             margin = _calc_margin(c["cost_gbp"], c["shipping_gbp"], target_sell_price_gbp, fee_key)
             if margin < MIN_NET_MARGIN_PCT:
@@ -623,9 +640,37 @@ def place_supplier_order(supplier: str, product_id: str, buyer_address: dict) ->
         return _place_cj_order(product_id, buyer_address)
     elif supplier == "bigbuy":
         return _place_bigbuy_order(product_id, buyer_address)
+    elif supplier == "amazon":
+        return _place_amazon_order(product_id, buyer_address)
     else:
         log.warning(f"No order API implemented for supplier '{supplier}' — manual fulfilment required")
         return None
+
+
+def _place_amazon_order(asin: str, addr: dict) -> dict | None:
+    """
+    Amazon has no buyer API, so the order is placed by hand. This sends the alert
+    with the product link and delivery address and returns a placeholder order ID.
+    Once Amazon dispatches, enter tracking with:
+        python upload_tracking.py <ebay_order_id> <tracking_number> "<carrier>"
+    """
+    from datetime import datetime, timezone
+    from monitor import send_alert
+
+    order_ref = f"AMZ-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{asin}"
+    body = (
+        "New eBay sale - buy this on Amazon UK and ship to the customer.\n\n"
+        f"https://www.amazon.co.uk/dp/{asin}\n"
+        f"Internal reference: {order_ref}\n\n"
+        "Deliver to:\n"
+        f"{addr.get('name', '')}\n{addr.get('line1', '')}\n{addr.get('line2', '')}\n"
+        f"{addr.get('city', '')}\n{addr.get('postcode', '')}\n"
+        f"Phone: {addr.get('phone', '')}\n\n"
+        "Tick 'This is a gift' so no prices are shown in the parcel."
+    )
+    send_alert(subject=f"[ACTION NEEDED] Place Amazon order {order_ref}", body=body)
+    log.warning(f"Amazon order {order_ref} requires manual placement — alert sent")
+    return {"supplier_order_id": order_ref}
 
 
 def _place_wholesalebeds_order(product_id: str, addr: dict) -> dict | None:
@@ -782,6 +827,9 @@ def get_tracking(supplier: str, supplier_order_id: str) -> str | None:
             # No API to poll — tracking number must be entered manually
             # (db.update_order) once Wholesale Beds emails dispatch confirmation.
             log.debug(f"Wholesale Beds order {supplier_order_id}: tracking is manual, not polled")
+            return None
+        if supplier == "amazon":
+            log.debug(f"Amazon order {supplier_order_id}: tracking is manual, not polled")
             return None
         if supplier == "avasam":
             token = get_avasam_token()

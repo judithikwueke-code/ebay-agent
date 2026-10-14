@@ -18,7 +18,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from config import (
     RESEARCH_HOUR, RESEARCH_HOUR_EVENING, HEALTH_CHECK_HOUR,
     ORDER_POLL_MINUTES, SUPPLIER_TRACKING_HOURS,
-    DAILY_LISTING_CAP, CATEGORIES,
+    DAILY_LISTING_CAP, CATEGORIES, SUPPLIER_PRIORITY,
 )
 from db import init_db, is_product_already_listed
 from research import find_opportunities
@@ -248,7 +248,7 @@ def main():
 
     # CJ catalogue sweep: 10am, 2pm, 8pm — pages through all 10k+ UK products
     # This catches everything that keyword search misses (different product names etc.)
-    for sweep_hour in [10, 14, 20]:
+    for sweep_hour in ([10, 14, 20] if "cj" in SUPPLIER_PRIORITY else []):  # CJ-only job
         scheduler.add_job(
             run_sweep,
             CronTrigger(hour=sweep_hour, minute=0, timezone="Europe/London"),

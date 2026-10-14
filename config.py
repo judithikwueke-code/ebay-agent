@@ -213,7 +213,9 @@ SMTP_PASS = os.getenv("SMTP_PASS")
 MIN_PRICE_GBP = 50.0
 MAX_PRICE_GBP = 600.0
 MAX_ACTIVE_COMPETITORS = 25000  # max active identical listings on eBay UK
-MIN_NET_MARGIN_PCT = 25.0       # minimum profit margin after all fees
+MIN_NET_MARGIN_PCT = float(os.getenv("MIN_NET_MARGIN_PCT", "25"))  # minimum profit margin after all fees
+# Supplier cost (before VAT/fees) must be under this share of the eBay price to be considered.
+SUPPLIER_COST_CAP_RATIO = float(os.getenv("SUPPLIER_COST_CAP_RATIO", "0.6"))
 
 # Declared listing quantity for dropshipped (not physically held) stock.
 # Kept low on a new account — a brand-new seller showing 50 units of
@@ -410,7 +412,9 @@ VERO_BRANDS = [
 ]
 
 # Supplier priority order (1 = try first)
-SUPPLIER_PRIORITY = ["wholesalebeds", "avasam", "costway", "wholesale_domestic", "birlea", "bigbuy", "cj"]
+# Override with e.g. SUPPLIERS=amazon to run an account on a single sourcing channel.
+SUPPLIER_PRIORITY = [s.strip() for s in os.getenv(
+    "SUPPLIERS", "wholesalebeds,avasam,costway,wholesale_domestic,birlea,bigbuy,cj").split(",") if s.strip()]
 
 # Furniture must only come from UK-warehouse suppliers
-FURNITURE_ALLOWED_SUPPLIERS = ["wholesalebeds", "avasam", "costway", "wholesale_domestic", "birlea"]
+FURNITURE_ALLOWED_SUPPLIERS = [s for s in ["wholesalebeds", "avasam", "costway", "wholesale_domestic", "birlea"] if s in SUPPLIER_PRIORITY]

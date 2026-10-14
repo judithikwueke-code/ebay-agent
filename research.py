@@ -20,7 +20,10 @@ sell-through filter on top of this.
 """
 
 import logging
+import math
+import os
 import sqlite3
+from datetime import datetime, timezone
 import requests
 from config import (
     EBAY_BROWSE_BASE, get_app_token,
@@ -30,6 +33,13 @@ from config import (
 from db import DB_PATH
 
 TERAPEAK_TTL_DAYS = 7  # How long Terapeak data is considered fresh
+
+# Sales-velocity signal (Browse API getItem -> estimatedSoldQuantity / listing age).
+# DEMAND_MIN_SOLD_PER_WEEK > 0 drops keywords whose top listings sell slower than this
+# in total; 0 (default) leaves the filter off. Any non-zero velocity also boosts the score.
+DEMAND_MIN_SOLD_PER_WEEK = float(os.getenv("DEMAND_MIN_SOLD_PER_WEEK", "0"))
+DEMAND_SAMPLE_ITEMS = 4
+_velocity_cache: dict = {}
 
 log = logging.getLogger(__name__)
 
@@ -182,6 +192,45 @@ def _terapeak_lookup(keyword: str) -> dict | None:
     except Exception as e:
         log.debug(f"Terapeak lookup failed: {e}")
     return None
+
+
+def _sales_velocity(samples: list, keyword: str) -> float | None:
+    """
+    Units/week sold across the top bestMatch listings: sum of
+    estimatedSoldQuantity / weeks-since-listed (min 1 week) for each of the first
+    DEMAND_SAMPLE_ITEMS items. None if eBay returned nothing usable.
+    """
+    if keyword in _velocity_cache:
+        return _velocity_cache[keyword]
+    total, seen = 0.0, 0
+    for it in samples[:DEMAND_SAMPLE_ITEMS]:
+        item_id = it.get("itemId")
+        if not item_id:
+            continue
+        try:
+            r = requests.get(f"{EBAY_BROWSE_BASE}/item/{item_id}", headers=_browse_headers(), timeout=15)
+            r.raise_for_status()
+            d = r.json()
+        except Exception as e:
+            log.debug(f"getItem failed for {item_id}: {e}")
+            continue
+        avail = (d.get("estimatedAvailabilities") or [{}])[0]
+        sold = avail.get("estimatedSoldQuantity")
+        if sold is None:
+            continue
+        weeks = 1.0
+        created = d.get("itemCreationDate")
+        if created:
+            try:
+                age = datetime.now(timezone.utc) - datetime.fromisoformat(created.replace("Z", "+00:00"))
+                weeks = max(age.days / 7.0, 1.0)
+            except Exception:
+                pass
+        total += sold / weeks
+        seen += 1
+    result = round(total, 2) if seen else None
+    _velocity_cache[keyword] = result
+    return result
 
 
 def _score(avg_price: float, active: int, weight: float) -> float:
@@ -474,6 +523,14 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
 
             score = _score(avg_price, max(active, 1), weight)
 
+            sold_per_week = None
+            if DEMAND_MIN_SOLD_PER_WEEK > 0:
+                sold_per_week = _sales_velocity(samples, kw)
+                if sold_per_week is None or sold_per_week < DEMAND_MIN_SOLD_PER_WEEK:
+                    log.info(f"Skip '{kw}': sells ~{sold_per_week} units/week (< {DEMAND_MIN_SOLD_PER_WEEK})")
+                    continue
+                score *= 1 + math.log1p(sold_per_week)
+
             results.append({
                 "keyword": kw,
                 "category": cat_key,
@@ -484,8 +541,9 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
                 "sample_title": sample_title,
                 "sample_image_url": sample_image,
                 "competitor_titles": competitor_titles,
+                "sold_per_week": sold_per_week,
             })
-            log.info(f"Opportunity: '{kw}' | price=£{avg_price} | competitors={active} | score={score:.3f}")
+            log.info(f"Opportunity: '{kw}' | price=£{avg_price} | competitors={active} | sold/wk={sold_per_week} | score={score:.3f}")
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_n]

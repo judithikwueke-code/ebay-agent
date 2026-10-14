@@ -10,6 +10,7 @@ For each active CJ listing:
 import os
 import re
 import sqlite3
+import random
 import time
 import logging
 import requests
@@ -199,6 +200,64 @@ def run_stock_monitor():
         log.warning(f"Stock issues found: {len(issues)}")
     else:
         log.info("Stock monitor complete — all listings OK")
+
+    run_amazon_monitor()
+
+
+def run_amazon_monitor():
+    """
+    Re-check every live Amazon-sourced listing in a browser. Amazon stock and price move
+    constantly and there is no automatic fulfilment, so protect the account:
+      - out of stock / page gone  -> eBay quantity 0 (status paused_oos) + alert
+      - price rise leaves margin < AMAZON_MIN_MARGIN_PCT -> quantity 0 (paused_price) + alert
+      - back in stock at a viable price -> quantity restored (status active) + alert
+    """
+    import hashlib
+    from amazon_source import check_amazon_listing, close as close_amazon
+    from supplier import _calc_margin
+    from config import DEFAULT_LISTING_QUANTITY, VAT_RATE
+
+    min_margin = float(os.getenv("AMAZON_MIN_MARGIN_PCT", "10"))
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT id, supplier_product_id, title, listed_price_gbp, status "
+        "FROM products WHERE supplier='amazon' AND status IN ('active','paused_oos','paused_price') ORDER BY id"
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return
+    log.info(f"Amazon monitor: checking {len(rows)} listing(s)")
+
+    notes = []
+    try:
+        for pid, asin, title, listed_price, status in rows:
+            sku = hashlib.md5(f"amazon-{asin}".encode()).hexdigest()[:20]
+            res = check_amazon_listing(asin)
+            if res.get("blocked"):
+                log.warning("Amazon monitor stopped early - robot check")
+                break
+            if res["in_stock"] is None:
+                continue  # unreadable page - change nothing
+            viable = res["in_stock"] and res["price"] is not None and (
+                _calc_margin(res["price"] / (1 + VAT_RATE), 0.0, listed_price or 0) >= min_margin  # shelf price is VAT-inclusive
+            )
+            if status == "active" and not viable:
+                reason = "OUT OF STOCK / gone" if not res["in_stock"] else f"price now £{res['price']:.2f} (margin too low)"
+                new_status = "paused_oos" if not res["in_stock"] else "paused_price"
+                if _set_ebay_quantity(sku, 0):
+                    _update_status(pid, new_status)
+                    notes.append(f"Paused on eBay - {reason}: {title[:50]} | https://www.amazon.co.uk/dp/{asin}")
+                else:
+                    notes.append(f"{reason} but eBay pause FAILED: {title[:50]} | https://www.amazon.co.uk/dp/{asin}")
+            elif status != "active" and viable:
+                if _set_ebay_quantity(sku, DEFAULT_LISTING_QUANTITY):
+                    _update_status(pid, "active")
+                    notes.append(f"Back in stock at GBP {res['price']:.2f}, re-enabled: {title[:50]}")
+            time.sleep(random.uniform(2, 4))
+    finally:
+        close_amazon()
+    if notes:
+        _send_telegram("AMAZON STOCK/PRICE: " + " || ".join(notes))
 
 
 def _update_status(product_id: int, status: str):
