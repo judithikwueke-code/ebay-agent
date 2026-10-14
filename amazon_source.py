@@ -149,6 +149,12 @@ def search_amazon(keyword: str, max_price_gbp: float, limit: int = 4) -> list[di
                     continue
                 title_el = c.locator("h2")
                 title = title_el.first.inner_text().strip() if title_el.count() else keyword
+                # Relevance: every meaningful keyword word (matched on its first 5 letters) must
+                # appear in the title, otherwise "electric planer" matches a manual hand plane.
+                words = [w[:5] for w in re.findall(r"[a-z0-9]+", keyword.lower())
+                         if len(w) >= 4 and w not in ("with", "for", "and", "the")]
+                if any(w not in title.lower() for w in words):
+                    continue
                 img_el = c.locator("img.s-image")
                 img = _hires(img_el.first.get_attribute("src")) if img_el.count() else ""
                 prime = c.locator("i.a-icon-prime").count() > 0
@@ -238,7 +244,7 @@ def get_product(asin: str) -> dict | None:
             time.sleep(random.uniform(1.0, 2.0))
             if page.locator("#productTitle").count() == 0:
                 return None
-            title = page.locator("#productTitle").inner_text().strip()
+            title = page.locator("span#productTitle").first.inner_text().strip()
             price = None
             for sel in ("#corePrice_feature_div .a-offscreen", "#corePriceDisplay_desktop_feature_div .a-offscreen",
                         ".a-price .a-offscreen"):
