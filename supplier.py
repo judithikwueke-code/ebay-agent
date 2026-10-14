@@ -653,9 +653,34 @@ def place_supplier_order(supplier: str, product_id: str, buyer_address: dict) ->
         return _place_bigbuy_order(product_id, buyer_address)
     elif supplier == "amazon":
         return _place_amazon_order(product_id, buyer_address)
+    elif supplier == "sportsdirect":
+        return _place_sportsdirect_order(product_id, buyer_address)
     else:
         log.warning(f"No order API implemented for supplier '{supplier}' — manual fulfilment required")
         return None
+
+
+def _place_sportsdirect_order(product_path: str, addr: dict) -> dict | None:
+    """Sports Direct items are bought by hand: alert with the link and the buyer's address."""
+    from datetime import datetime, timezone
+    from monitor import send_alert
+
+    order_ref = f"SD-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    nl = chr(10)
+    body = nl.join([
+        "New eBay sale - buy this on Sports Direct and have it delivered to the customer.",
+        "",
+        f"https://www.sportsdirect.com/{product_path}",
+        f"Internal reference: {order_ref}",
+        "",
+        "Deliver to:",
+        addr.get("name", ""), addr.get("line1", ""), addr.get("line2", ""),
+        addr.get("city", ""), addr.get("postcode", ""),
+        f"Phone: {addr.get('phone', '')}",
+    ])
+    send_alert(subject=f"[ACTION NEEDED] Place Sports Direct order {order_ref}", body=body)
+    log.warning(f"Sports Direct order {order_ref} requires manual placement - alert sent")
+    return {"supplier_order_id": order_ref}
 
 
 def _place_amazon_order(asin: str, addr: dict) -> dict | None:
@@ -839,7 +864,7 @@ def get_tracking(supplier: str, supplier_order_id: str) -> str | None:
             # (db.update_order) once Wholesale Beds emails dispatch confirmation.
             log.debug(f"Wholesale Beds order {supplier_order_id}: tracking is manual, not polled")
             return None
-        if supplier == "amazon":
+        if supplier in ("amazon", "sportsdirect"):
             log.debug(f"Amazon order {supplier_order_id}: tracking is manual, not polled")
             return None
         if supplier == "avasam":
