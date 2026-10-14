@@ -306,6 +306,10 @@ def calculate_ebay_fees(sell_price_gbp: float, category_key: str = "furniture") 
     keys fall back to "everything_else" (12.9% flat) rather than raising,
     since a missing category shouldn't crash a research pass.
     """
+    # Private-seller account: eBay charges the seller no final value / regulatory / order fee
+    # (the buyer pays the Buyer Protection fee instead).
+    if os.getenv("EBAY_NO_SELLER_FEES", "0") == "1":
+        return 0.0
     tiers = EBAY_FVF_TIERS_BY_CATEGORY.get(category_key, EBAY_FVF_TIERS_BY_CATEGORY["everything_else"])
 
     remaining = sell_price_gbp

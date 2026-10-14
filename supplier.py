@@ -521,8 +521,12 @@ def flat_profit_price(cost_gbp: float, shipping_gbp: float, fee_key: str, profit
     sell = total_cost
     while sell - calculate_ebay_fees(sell, fee_key) - total_cost < profit_gbp:
         sell += 0.01
-    price = math.ceil(sell) - 0.01
-    return round(price if price >= sell else price + 1, 2)
+    # Smallest X.49 / X.99 price at or above the break-even-plus-profit figure.
+    n = int(sell)
+    for c in (n + 0.49, n + 0.99, n + 1.49, n + 1.99):
+        if c >= sell:
+            return round(c, 2)
+    return round(math.ceil(sell) + 0.99, 2)
 
 
 def _min_viable_price(cost_gbp: float, shipping_gbp: float, fee_key: str) -> float:
