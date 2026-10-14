@@ -275,6 +275,13 @@ def get_product(asin: str) -> dict | None:
                 src = _hires(t.get_attribute("src") or "")
                 if src and "sprite" not in src and "play-icon" not in src and src not in images:
                     images.append(src)
+            # The page's own gallery data carries the full-size ("hiRes") image of every photo.
+            try:
+                hi = list(dict.fromkeys(re.findall(r'"hiRes":"(https:[^"]+?\.jpg)"', page.content())))
+                if len(hi) >= 2:
+                    images = hi[:8]
+            except Exception:
+                pass
             bullets = [b.inner_text().strip() for b in page.locator("#feature-bullets li").all()[:8]]
             aspects = {}
             try:
