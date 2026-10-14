@@ -97,9 +97,9 @@ print(f"  refresh_token expires in: {rt_expires_in}s (~{rt_expires_in//86400} da
 print("="*60)
 
 # Step 3 — write to .env
-env_path = os.path.join(os.path.dirname(__file__), ".env")
-with open(env_path, "r") as f:
-    env_content = f.read()
+# Saved to a SEPARATE file so the original account's .env is never overwritten.
+env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.account2")
+env_content = open(env_path).read() if os.path.exists(env_path) else ""
 
 def set_env_value(content, key, value):
     import re
