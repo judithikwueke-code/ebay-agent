@@ -97,6 +97,14 @@ def _goto(page, url: str) -> bool:
     return True
 
 
+def _avail_text(page) -> str:
+    """Availability blurb; tolerant of pages with several/odd #availability nodes."""
+    try:
+        return page.locator("#availability").first.inner_text(timeout=2000).lower()
+    except Exception:
+        return ""
+
+
 def _price(text: str | None) -> float | None:
     if not text:
         return None
@@ -214,7 +222,7 @@ def check_amazon_listing(asin: str) -> dict:
                     price = _price(loc.first.text_content())
                     if price:
                         break
-            avail = page.locator("#availability").inner_text().lower() if page.locator("#availability").count() else ""
+            avail = _avail_text(page)
             can_buy = page.locator("#add-to-cart-button, #buy-now-button").count() > 0
             in_stock = bool(can_buy and "unavailable" not in avail and price)
             return {"found": True, "in_stock": in_stock, "price": price, "blocked": False}
@@ -268,7 +276,7 @@ def get_product(asin: str) -> dict | None:
                 if src and "sprite" not in src and "play-icon" not in src and src not in images:
                     images.append(src)
             bullets = [b.inner_text().strip() for b in page.locator("#feature-bullets li").all()[:8]]
-            avail = page.locator("#availability").inner_text().lower() if page.locator("#availability").count() else ""
+            avail = _avail_text(page)
             in_stock = page.locator("#add-to-cart-button, #buy-now-button").count() > 0 and "unavailable" not in avail
             prime = page.locator("i.a-icon-prime").count() > 0
             return {

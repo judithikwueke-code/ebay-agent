@@ -113,6 +113,14 @@ def research_and_list(dry_run: bool = False):
             log.info(f"No supplier match for '{opp['keyword']}' — skipping")
             continue
 
+        if match["supplier"] == "amazon":
+            # Search results only carry one thumbnail; read the product page for all photos + bullets.
+            from amazon_source import get_product
+            full = get_product(match["product_id"])
+            if full and len(full.get("images", [])) > len(match.get("images", [])):
+                match["images"] = full["images"]
+                match["description"] = full.get("description") or match.get("description", "")
+
         if is_product_already_listed(match["supplier"], match["product_id"]):
             log.info(f"Already listed: {match['supplier']} {match['product_id']} — skipping duplicate")
             continue
