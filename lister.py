@@ -14,7 +14,7 @@ import anthropic
 from config import (
     EBAY_SELL_BASE, ANTHROPIC_API_KEY, get_user_token, get_app_token,
     EBAY_FULFILLMENT_POLICY_ID, EBAY_FURNITURE_FULFILLMENT_POLICY_ID, EBAY_CJ_FULFILLMENT_POLICY_ID,
-    EBAY_PAYMENT_POLICY_ID, EBAY_RETURN_POLICY_ID,
+    EBAY_PAYMENT_POLICY_ID, EBAY_RETURN_POLICY_ID, EBAY_MERCHANT_LOCATION_KEY,
     DAILY_LISTING_CAP, CATEGORIES, VERO_BRANDS, MIN_NET_MARGIN_PCT, DEFAULT_LISTING_QUANTITY,
     calculate_ebay_fees, total_cost_with_vat,
 )
@@ -319,7 +319,7 @@ def _update_offer(offer_id: str, sku: str, price_gbp: float, category_id: str,
             "paymentPolicyId": EBAY_PAYMENT_POLICY_ID,
             "returnPolicyId": EBAY_RETURN_POLICY_ID,
         },
-        "merchantLocationKey": "default",
+        "merchantLocationKey": EBAY_MERCHANT_LOCATION_KEY,
     }
     resp = requests.put(url, headers=_sell_headers(), json=payload, timeout=15)
     if resp.status_code in (200, 204):
@@ -377,7 +377,7 @@ def _create_offer(sku: str, price_gbp: float, category_id: str, is_furniture: bo
             "paymentPolicyId": EBAY_PAYMENT_POLICY_ID,
             "returnPolicyId": EBAY_RETURN_POLICY_ID,
         },
-        "merchantLocationKey": "default",
+        "merchantLocationKey": EBAY_MERCHANT_LOCATION_KEY,
     }
     resp = requests.post(url, headers=_sell_headers(), json=payload, timeout=15)
     if resp.status_code == 201:

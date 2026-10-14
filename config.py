@@ -51,6 +51,7 @@ EBAY_DEV_ID = os.getenv("EBAY_DEV_ID")
 EBAY_USER_TOKEN = os.getenv("EBAY_USER_TOKEN")        # current access token (short-lived, 2h)
 EBAY_REFRESH_TOKEN = os.getenv("EBAY_REFRESH_TOKEN")  # long-lived refresh token (18 months)
 EBAY_MARKETPLACE = "EBAY_GB"
+EBAY_MERCHANT_LOCATION_KEY = os.getenv("EBAY_MERCHANT_LOCATION_KEY", "default")  # inventory location key on the seller account
 
 # ---------------------------------------------------------------------------
 # eBay User Token auto-refresh
