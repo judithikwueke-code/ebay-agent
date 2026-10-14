@@ -29,36 +29,38 @@ DELIVERY_COST = 49.99        # 2-person delivery
 HANDLING_DAYS = 14           # Sports Direct: delivered within 3-14 working days
 POLICY_NAME = "Furniture Sports Direct 14 day"
 
-TITLE = "Jack Wills Lancaster 4 Piece Bedroom Furniture Set Grey Wardrobe Chest Bedsides"[:80]
+TITLE = "Lancaster 4 Piece Grey Bedroom Furniture Set 3 Door Wardrobe Chest of Drawers"
 IMAGES = [f"https://cdn.media.amplience.net/i/frasersdev/70226302_o{suffix}?fmt=jpg&w=1200"
           for suffix in ("", "_a1", "_a2", "_a3", "_a4", "_a5", "_a6", "_a7")]
 
 DESCRIPTION = """
-<h2>Jack Wills Lancaster 4-Piece Bedroom Set - Grey</h2>
-<p>Transform your bedroom with this stylish, classic 4-piece set with a trendy finish and metal handles.
-A stunning centrepiece for your room.</p>
-<h3>What's included</h3>
+<h2>Lancaster 4 Piece Grey Bedroom Furniture Set - Wardrobe, Chest of Drawers &amp; 2 Bedside Tables</h2>
+<p>Complete your bedroom in one go with this stylish <b>Lancaster grey bedroom furniture set</b>. A classic, modern finish with
+metal handles makes it a stunning centrepiece for any bedroom, and the matching pieces give you plenty of storage.</p>
+<h3>What's in the 4 piece bedroom set</h3>
 <ul>
-<li>3 door wardrobe - hanging rail and top shelf behind the left and middle doors, rail with middle shelf behind the right door</li>
-<li>Spacious 4 drawer chest</li>
-<li>Two bedside tables</li>
+<li><b>3 door wardrobe</b> - hanging rail and top shelf behind the left and middle doors, rail with middle shelf behind the right door</li>
+<li><b>4 drawer chest of drawers</b> - spacious storage for clothes and bedding</li>
+<li><b>2 x bedside tables</b> - handy storage either side of the bed</li>
 </ul>
-<h3>Dimensions</h3>
+<h3>Size</h3>
 <ul>
 <li>3 door wardrobe: H180.5 x W112 x D52cm</li>
 <li>4 drawer chest: H95.5 x W79 x D39.5cm</li>
 <li>Bedside table: H48 x W45 x D40cm</li>
 </ul>
-<h3>Details</h3>
+<h3>Key features</h3>
 <ul>
-<li>Brand: Jack Wills (product code 702263)</li>
-<li>Colour: Grey. Material: Wood</li>
-<li>Easy to assemble at home</li>
-<li>Care: wipe with a dry cloth only</li>
+<li>Colour: grey</li>
+<li>Material: wood, with metal handles</li>
+<li>Matching 4 piece set - wardrobe, chest and 2 bedsides</li>
+<li>Easy to assemble at home - flat pack</li>
+<li>Care: wipe clean with a dry cloth only</li>
 </ul>
-<h3>Delivery</h3>
-<p>Delivered by a 2-person delivery team within 14 working days of purchase (UK mainland; we cannot deliver to the Channel Islands).
-Large item - please make sure someone is available to receive it.</p>
+<h3>Delivery &amp; returns</h3>
+<p>Free delivery to UK mainland by a 2-person delivery team, arriving within 14 working days of purchase.
+Large item - please make sure someone is available to receive it. We cannot deliver to the Channel Islands.
+Returns accepted - see our returns policy.</p>
 """.strip()
 
 
