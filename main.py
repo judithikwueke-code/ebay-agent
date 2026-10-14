@@ -8,6 +8,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -120,6 +121,8 @@ def research_and_list(dry_run: bool = False):
             if full and len(full.get("images", [])) > len(match.get("images", [])):
                 match["images"] = full["images"]
                 match["description"] = full.get("description") or match.get("description", "")
+            if full and full.get("aspects") and os.getenv("AMAZON_BRAND_ASPECT", "1") == "1":
+                match["aspects"] = full["aspects"]
 
         if is_product_already_listed(match["supplier"], match["product_id"]):
             log.info(f"Already listed: {match['supplier']} {match['product_id']} — skipping duplicate")

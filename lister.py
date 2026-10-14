@@ -102,14 +102,25 @@ _claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 # VeRO guard — second check at listing time
 # ---------------------------------------------------------------------------
 
+import re as _re
+# "for Audi Q2", "fits BMW 3 series": plain compatibility statements for car parts/accessories are
+# allowed, so they are not treated as use of the brand itself.
+_COMPAT_RE = _re.compile(r"\b(?:for|fits?|compatible with|suitable for)\s+(?:the\s+)?"
+                         r"(?:audi|bmw|mercedes|volkswagen|ford|vauxhall|honda)\b")
+
+
+def _strip_compat(text: str) -> str:
+    return _COMPAT_RE.sub(" ", text.lower())
+
+
 def _vero_blocked(text: str) -> bool:
     """Return True if any VeRO brand keyword appears in the text."""
-    lower = text.lower()
+    lower = _strip_compat(text)
     return any(brand in lower for brand in VERO_BRANDS)
 
 
 def _first_vero_hit(text: str) -> str:
-    lower = text.lower()
+    lower = _strip_compat(text)
     for brand in VERO_BRANDS:
         if brand in lower:
             return brand
@@ -237,7 +248,7 @@ def _calculate_sell_price(cost_gbp: float, shipping_gbp: float, target_margin: f
     # overshoot a coarser "nearest £X9" step caused on cheap items (e.g. a
     # £10.02 and £16.08 minimum both rounding up to the same £19).
     sell = math.ceil(sell) - 0.01
-    return max(sell, total_cost * 1.35)  # safety floor
+    return max(sell, total_cost * SAFETY_FLOOR_MARKUP)  # safety floor
 
 
 # ---------------------------------------------------------------------------
@@ -489,7 +500,52 @@ def _build_aspects(category: str, supplier_match: dict, title: str) -> dict:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+MIN_LISTING_PRICE_GBP = float(os.getenv("MIN_LISTING_PRICE_GBP", "12"))
+SAFETY_FLOOR_MARKUP = float(os.getenv("SAFETY_FLOOR_MARKUP", "1.35"))  # never price below cost x this
 _PAUSE_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PAUSE_LISTINGS")
+
+
+def _fill_required_aspects(category_id: str, aspects: dict, title: str) -> dict:
+    """
+    Fill any item specific eBay marks as required for this category that we have not set, using
+    the allowed-value list. Only conservative guesses (wired/wireless from the title, colour word,
+    "Does not apply"); anything else is left for eBay's publish error to flag.
+    """
+    try:
+        r = requests.get(
+            "https://api.ebay.com/commerce/taxonomy/v1/category_tree/3/get_item_aspects_for_category",
+            headers={"Authorization": f"Bearer {get_app_token()}", "X-EBAY-C-MARKETPLACE-ID": "EBAY_GB",
+                     "Accept": "application/json"},
+            params={"category_id": category_id}, timeout=15)
+        r.raise_for_status()
+        specs = r.json().get("aspects", [])
+    except Exception as e:
+        log.warning(f"Could not read required aspects for category {category_id}: {e}")
+        return aspects
+    lower = title.lower()
+    for a in specs:
+        c = a.get("aspectConstraint", {})
+        name = a.get("localizedAspectName", "")
+        if not c.get("aspectRequired") or name in aspects:
+            continue
+        allowed = [v["localizedValue"] for v in a.get("aspectValues", [])]
+        pick = None
+        if name == "Connectivity":
+            want = "Wireless" if any(w in lower for w in ("wireless", "bluetooth")) else "Wired"
+            pick = next((x for x in allowed if x.lower() == want.lower()), want if not allowed else None)
+        elif name in ("Colour", "Color"):
+            for word, mapped in _COLOUR_KEYWORDS.items():
+                if mapped and word in lower:
+                    pick = mapped
+                    break
+        if not pick:
+            pick = next((x for x in allowed if x.lower() in ("does not apply", "not applicable")), None)
+        if not pick and c.get("aspectMode") == "FREE_TEXT":
+            pick = "Does Not Apply"
+        if pick:
+            aspects[name] = [pick]
+            log.info(f"Filled required item specific {name} = {pick}")
+    return aspects
 
 
 def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = False,
@@ -550,8 +606,8 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
 
     # New accounts: don't list below £12 — low-price items attract SNAD cases
     # that hit defect rate hard before any feedback is built up.
-    if sell_price < 12.0 and not is_furniture:
-        log.info(f"Sell price £{sell_price} below £12 minimum — skipping '{keyword}'")
+    if sell_price < MIN_LISTING_PRICE_GBP and not is_furniture:
+        log.info(f"Sell price £{sell_price} below £{MIN_LISTING_PRICE_GBP} minimum — skipping '{keyword}'")
         return None
 
     # Generate optimised title + description, informed by real competitor
@@ -618,8 +674,14 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
                       if w.lower() not in _skip_words]
         if type_words:
             aspects["Type"] = [" ".join(type_words)]
+    # Real brand/model read from the supplier page (e.g. Amazon's brand line) win over the defaults below.
+    for _k, _v in (supplier_match.get("aspects") or {}).items():
+        if _v:
+            aspects[_k] = _v
     if "Brand" not in aspects:
         aspects["Brand"] = ["Unbranded"]
+    if "Model" not in aspects:
+        aspects["Model"] = ["Does Not Apply"]
     if "Power Source" not in aspects:
         kw_lower = keyword.lower()
         if any(w in kw_lower for w in ("cordless", "rechargeable", "wireless", "battery")):
@@ -630,6 +692,8 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
             aspects["Power Source"] = ["Battery"]
     if "Manufacturer Part Number" not in aspects:
         aspects["Manufacturer Part Number"] = ["Does Not Apply"]
+
+    aspects = _fill_required_aspects(category_id, aspects, title)
 
     # 2. Create inventory item
     ok = _get_or_create_inventory_item(sku, title, description, images, category_id, aspects=aspects)

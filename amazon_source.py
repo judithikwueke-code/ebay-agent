@@ -276,6 +276,23 @@ def get_product(asin: str) -> dict | None:
                 if src and "sprite" not in src and "play-icon" not in src and src not in images:
                     images.append(src)
             bullets = [b.inner_text().strip() for b in page.locator("#feature-bullets li").all()[:8]]
+            aspects = {}
+            try:
+                by = page.locator("#bylineInfo").first.inner_text(timeout=1500).strip()
+                brand = re.sub(r"^(Visit the |Brand:\s*)", "", by)
+                brand = re.sub(r"\s+Store$", "", brand).strip()
+                if brand and len(brand) < 40:
+                    aspects["Brand"] = [brand]
+            except Exception:
+                pass
+            try:
+                row = page.locator("tr:has(th:has-text('Item model number')) td, "
+                                   "li:has(span:has-text('Item model number')) span").last
+                model = row.inner_text(timeout=1500).strip()
+                if model and len(model) < 40:
+                    aspects["Model"] = [model]
+            except Exception:
+                pass
             avail = _avail_text(page)
             in_stock = page.locator("#add-to-cart-button, #buy-now-button").count() > 0 and "unavailable" not in avail
             prime = page.locator("i.a-icon-prime").count() > 0
@@ -284,6 +301,7 @@ def get_product(asin: str) -> dict | None:
                 "cost_gbp": price or 0.0, "shipping_gbp": 0.0 if prime else DEFAULT_PAID_DELIVERY_GBP,
                 "delivery_days": 3 if prime else 5, "images": images[:8],
                 "description": " ".join(bullets), "uk_warehouse": True, "in_stock": in_stock,
+                "aspects": aspects,
             }
         except Exception as e:
             log.warning(f"Amazon product read failed for {asin}: {e}")

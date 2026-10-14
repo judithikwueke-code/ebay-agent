@@ -59,7 +59,7 @@ def _browse_search(keyword: str, category_id: str, limit: int = 50,
     url = f"{EBAY_BROWSE_BASE}/item_summary/search"
     params = {
         "q": keyword,
-        "category_ids": category_id,
+        **({"category_ids": category_id} if category_id else {}),
         "filter": f"price:[{min_price}..{max_price}],priceCurrency:GBP,buyingOptions:{{FIXED_PRICE}}",
         "sort": "newlyListed",
         "limit": limit,
@@ -162,7 +162,8 @@ def _is_policy_blocked(text: str) -> bool:
 
 
 def _is_vero(title: str) -> bool:
-    title_lower = title.lower()
+    from lister import _strip_compat
+    title_lower = _strip_compat(title)
     return any(brand in title_lower for brand in VERO_BRANDS)
 
 
