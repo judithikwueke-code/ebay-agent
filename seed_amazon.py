@@ -14,7 +14,7 @@ import logging
 import re
 import sys
 
-from config import CATEGORIES, VAT_RATE, PRICING_MODE, MAX_PRICE_PREMIUM
+from config import CATEGORIES, VAT_RATE, PRICING_MODE, MAX_PRICE_PREMIUM, PRICE_CAP_MARKUP, total_cost_with_vat
 from db import init_db, is_product_already_listed
 from lister import create_listing
 from research import _market_snapshot, _is_vero, _is_policy_blocked
@@ -88,6 +88,10 @@ def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = Fal
         "competitor_titles": [s.get("title", "") for s in samples[:8] if s.get("title")],
     }
     target = max(market, min_price)
+    if PRICE_CAP_MARKUP > 0:
+        import math
+        cap = math.ceil(total_cost_with_vat(prod['cost_gbp'], prod['shipping_gbp']) * PRICE_CAP_MARKUP) - 0.01
+        target = max(min(target, cap), min_price)
     listing_id = create_listing(opp, prod, dry_run=dry_run, target_sell_price_gbp=target)
     log.info(f"{asin}: {'would list' if dry_run else 'listed'} -> {listing_id}")
     return bool(listing_id)

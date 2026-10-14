@@ -221,6 +221,9 @@ SUPPLIER_COST_CAP_RATIO = float(os.getenv("SUPPLIER_COST_CAP_RATIO", "0.6"))
 # our own margin-floor price, as long as it is within MAX_PRICE_PREMIUM x the market median.
 PRICING_MODE = os.getenv("PRICING_MODE", "market")
 MAX_PRICE_PREMIUM = float(os.getenv("MAX_PRICE_PREMIUM", "1.25"))
+# > 0: never price above (our VAT-inclusive cost x this), unless the margin floor needs more.
+# Stops a cheap source being listed at a keyword's much higher market median.
+PRICE_CAP_MARKUP = float(os.getenv("PRICE_CAP_MARKUP", "0"))
 
 # Declared listing quantity for dropshipped (not physically held) stock.
 # Kept low on a new account — a brand-new seller showing 50 units of

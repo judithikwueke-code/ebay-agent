@@ -18,7 +18,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from config import (
     RESEARCH_HOUR, RESEARCH_HOUR_EVENING, HEALTH_CHECK_HOUR,
     ORDER_POLL_MINUTES, SUPPLIER_TRACKING_HOURS,
-    DAILY_LISTING_CAP, CATEGORIES, SUPPLIER_PRIORITY, PRICING_MODE, MAX_PRICE_PREMIUM,
+    DAILY_LISTING_CAP, CATEGORIES, SUPPLIER_PRIORITY, PRICING_MODE, MAX_PRICE_PREMIUM, PRICE_CAP_MARKUP,
 )
 from db import init_db, is_product_already_listed
 from research import find_opportunities
@@ -134,6 +134,17 @@ def research_and_list(dry_run: bool = False):
             target_price = market_price  # price AT market median, not just margin floor
         else:
             target_price = None
+
+        if PRICE_CAP_MARKUP > 0 and target_price is not None:
+            import math
+            from config import total_cost_with_vat
+            from supplier import _min_viable_price
+            cap = math.ceil(total_cost_with_vat(match["cost_gbp"], match["shipping_gbp"]) * PRICE_CAP_MARKUP) - 0.01
+            floor = match.get("min_sell_price_gbp") or _min_viable_price(match["cost_gbp"], match["shipping_gbp"], fee_key)
+            capped = round(max(min(target_price, cap), floor), 2)
+            if capped < target_price:
+                log.info(f"Price cap: '{opp['keyword']}' £{target_price} -> £{capped} (cost x{PRICE_CAP_MARKUP})")
+            target_price = capped
 
         listing_id = create_listing(opp, match, dry_run=dry_run,
                                      target_sell_price_gbp=target_price)
