@@ -514,6 +514,17 @@ def _calc_margin(cost_gbp: float, shipping_gbp: float, sell_price_gbp: float,
     return round((net_revenue / sell_price_gbp) * 100, 2)
 
 
+def flat_profit_price(cost_gbp: float, shipping_gbp: float, fee_key: str, profit_gbp: float) -> float:
+    """Lowest £X.99 sell price that leaves at least profit_gbp net of eBay fees and (VAT-inclusive) cost."""
+    import math
+    total_cost = total_cost_with_vat(cost_gbp, shipping_gbp)
+    sell = total_cost
+    while sell - calculate_ebay_fees(sell, fee_key) - total_cost < profit_gbp:
+        sell += 0.01
+    price = math.ceil(sell) - 0.01
+    return round(price if price >= sell else price + 1, 2)
+
+
 def _min_viable_price(cost_gbp: float, shipping_gbp: float, fee_key: str) -> float:
     """Lowest sell price (£X.99 format) that hits MIN_NET_MARGIN_PCT after fees and VAT costs."""
     total_cost = total_cost_with_vat(cost_gbp, shipping_gbp)

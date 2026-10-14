@@ -19,6 +19,7 @@ from config import (
     RESEARCH_HOUR, RESEARCH_HOUR_EVENING, HEALTH_CHECK_HOUR,
     ORDER_POLL_MINUTES, SUPPLIER_TRACKING_HOURS,
     DAILY_LISTING_CAP, CATEGORIES, SUPPLIER_PRIORITY, PRICING_MODE, MAX_PRICE_PREMIUM, PRICE_CAP_MARKUP,
+    FLAT_PROFIT_GBP, FLAT_PROFIT_MAX_COST,
 )
 from db import init_db, is_product_already_listed
 from research import find_opportunities
@@ -116,6 +117,14 @@ def research_and_list(dry_run: bool = False):
             log.info(f"Already listed: {match['supplier']} {match['product_id']} — skipping duplicate")
             continue
 
+        flat_price = None
+        if FLAT_PROFIT_GBP > 0 and not is_furniture:
+            from config import total_cost_with_vat
+            from supplier import flat_profit_price
+            if total_cost_with_vat(match["cost_gbp"], match["shipping_gbp"]) <= FLAT_PROFIT_MAX_COST:
+                flat_price = flat_profit_price(match["cost_gbp"], match["shipping_gbp"], fee_key, FLAT_PROFIT_GBP)
+                match["min_sell_price_gbp"] = flat_price
+
         # Price competitiveness gate:
         # Our minimum viable price must be within 25% of the bestMatch market median.
         # If we can't fit in that band, we cannot compete — skip rather than list invisibly.
@@ -135,7 +144,10 @@ def research_and_list(dry_run: bool = False):
         else:
             target_price = None
 
-        if PRICE_CAP_MARKUP > 0 and target_price is not None:
+        if flat_price is not None:
+            target_price = flat_price
+            log.info(f"Flat profit: '{opp['keyword']}' priced at £{flat_price} (≈£{FLAT_PROFIT_GBP:.0f} net profit)")
+        elif PRICE_CAP_MARKUP > 0 and target_price is not None:
             import math
             from config import total_cost_with_vat
             from supplier import _min_viable_price

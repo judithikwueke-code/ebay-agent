@@ -224,6 +224,12 @@ MAX_PRICE_PREMIUM = float(os.getenv("MAX_PRICE_PREMIUM", "1.25"))
 # > 0: never price above (our VAT-inclusive cost x this), unless the margin floor needs more.
 # Stops a cheap source being listed at a keyword's much higher market median.
 PRICE_CAP_MARKUP = float(os.getenv("PRICE_CAP_MARKUP", "0"))
+# > 0: for items whose VAT-inclusive cost is <= FLAT_PROFIT_MAX_COST, price at exactly the level that
+# leaves this much NET profit (after eBay fees), instead of using market/markup pricing.
+FLAT_PROFIT_GBP = float(os.getenv("FLAT_PROFIT_GBP", "0"))
+FLAT_PROFIT_MAX_COST = float(os.getenv("FLAT_PROFIT_MAX_COST", "40"))
+# 1 = the buyer has Amazon Prime, so Amazon delivery costs nothing.
+AMAZON_FREE_DELIVERY = os.getenv("AMAZON_FREE_DELIVERY", "0") == "1"
 
 # Declared listing quantity for dropshipped (not physically held) stock.
 # Kept low on a new account — a brand-new seller showing 50 units of

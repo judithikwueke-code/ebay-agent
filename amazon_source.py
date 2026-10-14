@@ -24,7 +24,9 @@ _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 # Quality gates — a bad Amazon source becomes a bad eBay review.
 MIN_RATING = 4.0
 MIN_REVIEWS = 50
-DEFAULT_PAID_DELIVERY_GBP = 3.99
+import os as _os
+# With Prime, delivery is free; otherwise assume a typical paid delivery charge.
+DEFAULT_PAID_DELIVERY_GBP = 0.0 if _os.getenv("AMAZON_FREE_DELIVERY", "0") == "1" else 3.99
 
 _lock = threading.Lock()
 _pw = None

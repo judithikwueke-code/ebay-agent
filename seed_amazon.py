@@ -14,11 +14,11 @@ import logging
 import re
 import sys
 
-from config import CATEGORIES, VAT_RATE, PRICING_MODE, MAX_PRICE_PREMIUM, PRICE_CAP_MARKUP, total_cost_with_vat
+from config import CATEGORIES, VAT_RATE, PRICING_MODE, MAX_PRICE_PREMIUM, PRICE_CAP_MARKUP, FLAT_PROFIT_GBP, FLAT_PROFIT_MAX_COST, total_cost_with_vat
 from db import init_db, is_product_already_listed
 from lister import create_listing
 from research import _market_snapshot, _is_vero, _is_policy_blocked
-from supplier import _calc_margin, _min_viable_price
+from supplier import _calc_margin, _min_viable_price, flat_profit_price
 import amazon_source
 
 log = logging.getLogger("seed_amazon")
@@ -88,6 +88,8 @@ def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = Fal
         "competitor_titles": [s.get("title", "") for s in samples[:8] if s.get("title")],
     }
     target = max(market, min_price)
+    if FLAT_PROFIT_GBP > 0 and total_cost_with_vat(prod['cost_gbp'], prod['shipping_gbp']) <= FLAT_PROFIT_MAX_COST:
+        target = min_price = flat_profit_price(prod['cost_gbp'], prod['shipping_gbp'], fee_key, FLAT_PROFIT_GBP)
     if PRICE_CAP_MARKUP > 0:
         import math
         cap = math.ceil(total_cost_with_vat(prod['cost_gbp'], prod['shipping_gbp']) * PRICE_CAP_MARKUP) - 0.01
