@@ -73,6 +73,7 @@ _SELL_SCOPES = " ".join([
     "https://api.ebay.com/oauth/api_scope/sell.fulfillment",
     "https://api.ebay.com/oauth/api_scope/sell.account",
     "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly",
+    "https://api.ebay.com/oauth/api_scope/sell.marketing",
 ])
 
 

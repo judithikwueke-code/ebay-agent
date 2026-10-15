@@ -174,6 +174,12 @@ def research_and_list(dry_run: bool = False):
         if listing_id:
             listed += 1
 
+    try:
+        from promote import promote_new_listings
+        promote_new_listings()
+    except Exception as e:
+        log.warning(f"Promotion step skipped: {e}")
+
     skipped = len(opportunities) - listed
     log.info(f"=== Research cycle done — {listed} listing(s) created ===")
     try:

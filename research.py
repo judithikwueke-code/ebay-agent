@@ -38,7 +38,8 @@ TERAPEAK_TTL_DAYS = 7  # How long Terapeak data is considered fresh
 # DEMAND_MIN_SOLD_PER_WEEK > 0 drops keywords whose top listings sell slower than this
 # in total; 0 (default) leaves the filter off. Any non-zero velocity also boosts the score.
 DEMAND_MIN_SOLD_PER_WEEK = float(os.getenv("DEMAND_MIN_SOLD_PER_WEEK", "0"))
-DEMAND_SAMPLE_ITEMS = 4
+DEMAND_SAMPLE_ITEMS = int(os.getenv("DEMAND_SAMPLE_ITEMS", "4"))
+MAX_COMPETITORS_HARD = int(os.getenv("MAX_COMPETITORS_HARD", "300"))  # skip keywords with more active listings than this
 _velocity_cache: dict = {}
 
 log = logging.getLogger(__name__)
@@ -449,6 +450,19 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
         ],
     }
 
+    # Extra keywords from a file (one per line: category_key|keyword) — lets a run be widened without code changes.
+    extra_file = os.getenv("EXTRA_KEYWORDS_FILE")
+    if extra_file and os.path.exists(extra_file):
+        n_extra = 0
+        for line in open(extra_file, encoding="utf-8"):
+            line = line.strip()
+            if line and not line.startswith("#") and "|" in line:
+                cat, kw = [x.strip() for x in line.split("|", 1)]
+                if cat in seed_keywords and kw:
+                    seed_keywords[cat].append(kw)
+                    n_extra += 1
+        log.info(f"Added {n_extra} extra keywords from {extra_file}")
+
     # Pull fresh trending keywords every cycle and merge with seeds
     try:
         from trend_research import get_fresh_keywords
@@ -482,7 +496,7 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
             avg_price = snap["avg_price_gbp"]
 
             # Hard cap: >300 sellers = race-to-bottom commodity, skip
-            if active > 300:
+            if active > MAX_COMPETITORS_HARD:
                 log.debug(f"Skip '{kw}': {active} active competitors (too saturated)")
                 continue
             if avg_price == 0:
