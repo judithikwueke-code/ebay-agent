@@ -235,7 +235,7 @@ def _calculate_sell_price(cost_gbp: float, shipping_gbp: float, target_margin: f
     """
     total_cost = total_cost_with_vat(cost_gbp, shipping_gbp)
 
-    sell = total_cost * 1.2
+    sell = total_cost * SELL_START_MARKUP
     for _ in range(2000):
         fees = calculate_ebay_fees(sell, fee_key)
         net = sell - fees
@@ -501,6 +501,7 @@ def _build_aspects(category: str, supplier_match: dict, title: str) -> dict:
 # ---------------------------------------------------------------------------
 
 MIN_LISTING_PRICE_GBP = float(os.getenv("MIN_LISTING_PRICE_GBP", "12"))
+SELL_START_MARKUP = float(os.getenv("SELL_START_MARKUP", "1.2"))  # price search starts at cost x this (1.0 = from break-even)
 SAFETY_FLOOR_MARKUP = float(os.getenv("SAFETY_FLOOR_MARKUP", "1.35"))  # never price below cost x this
 _PAUSE_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "PAUSE_LISTINGS")
 
