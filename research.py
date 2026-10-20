@@ -154,6 +154,10 @@ _POLICY_BLOCKED = {
     # Medicines, supplements and veterinary products (trend discovery surfaces these)
     "capsules", "tablets", "supplement", "vitamin", "medicin", "ointment", "otic",
     "gastric", "ulcer", "testosterone", "testonax", "benfotiamine", "wormer",
+    # Baby-safety, medical, pesticide/veterinary and aerosol items (strict rules / restricted on eBay UK)
+    "baby bath", "bath seat", "bath tub", "bouncer", "baby swing", "baby walker", "infant", "baby monitor",
+    "pulse oximeter", "oximeter", "blood pressure", "forehead thermometer", "flea", "spot on", "insecticide",
+    "pesticide", "aerosol", "oven cleaner", "lighter fluid",
 }
 
 
