@@ -526,6 +526,11 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
             # Real titles currently ranking — fed to Claude in lister.py to mine
             # actual keyword variants/word order instead of guessing blind.
             competitor_titles = [s.get("title", "") for s in samples[:8] if s.get("title")]
+            # What buyers would actually pay for the top listings (price + postage), cheapest first.
+            def _buyer_total(it):
+                so = (it.get("shippingOptions") or [{}])[0]
+                return float(it["price"]["value"]) + float((so.get("shippingCost") or {}).get("value") or 0)
+            competitor_prices = sorted(_buyer_total(s) for s in samples if s.get("price", {}).get("value"))
 
             if _is_policy_blocked(kw):
                 log.warning(f"Skip '{kw}': matches eBay policy blocked term")
@@ -559,6 +564,7 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
                 "sample_title": sample_title,
                 "sample_image_url": sample_image,
                 "competitor_titles": competitor_titles,
+                "competitor_prices": competitor_prices,
                 "sold_per_week": sold_per_week,
             })
             log.info(f"Opportunity: '{kw}' | price=£{avg_price} | competitors={active} | sold/wk={sold_per_week} | score={score:.3f}")

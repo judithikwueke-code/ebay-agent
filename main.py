@@ -136,6 +136,27 @@ def research_and_list(dry_run: bool = False):
                 flat_price = flat_profit_price(match["cost_gbp"], match["shipping_gbp"], fee_key, FLAT_PROFIT_GBP)
                 match["min_sell_price_gbp"] = flat_price
 
+        # Competitive pricing (account 2): price at what the cheapest quarter of rivals charge, after the
+        # buyer-protection fee private-seller buyers pay on top; skip items that can't earn the minimum there.
+        if os.getenv("COMPETITIVE_PRICING", "0") == "1" and not is_furniture:
+            import math
+            from config import total_cost_with_vat
+            cps = opp.get("competitor_prices") or []
+            if len(cps) >= 5:
+                shelf = total_cost_with_vat(match["cost_gbp"], match["shipping_gbp"])
+                min_profit = float(os.getenv("MIN_PROFIT_AT_P25", "2"))
+                target = (cps[len(cps) // 4] - 0.36) / 1.0413
+                if target < shelf + min_profit:
+                    log.info(f"Can't compete '{opp['keyword']}': rivals' cheapest quarter ~£{target:.2f} vs our cost £{shelf:.2f} - skip")
+                    continue
+                def _nice(x, up):
+                    n = math.floor(x)
+                    c = [n - 1 + 0.99, n + 0.49, n + 0.99, n + 1.49]
+                    c = [v for v in c if (v >= x - 1e-9 if up else v <= x + 1e-9)]
+                    return round(min(c) if up else max(c), 2)
+                flat_price = max(_nice(target, False), _nice(shelf + min_profit, True))
+                match["min_sell_price_gbp"] = flat_price
+
         # Price competitiveness gate:
         # Our minimum viable price must be within 25% of the bestMatch market median.
         # If we can't fit in that band, we cannot compete — skip rather than list invisibly.
@@ -157,7 +178,7 @@ def research_and_list(dry_run: bool = False):
 
         if flat_price is not None:
             target_price = flat_price
-            log.info(f"Flat profit: '{opp['keyword']}' priced at £{flat_price} (≈£{FLAT_PROFIT_GBP:.0f} net profit)")
+            log.info(f"Priced '{opp['keyword']}' at £{flat_price} (rule-based: flat profit / competitor percentile)")
         elif PRICE_CAP_MARKUP > 0 and target_price is not None:
             import math
             from config import total_cost_with_vat
