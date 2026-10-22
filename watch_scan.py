@@ -195,7 +195,7 @@ def process_item(it: dict, dry: bool = False) -> str:
 
     match, how = find_amazon_match(it)
     if not match:
-        if os.getenv("WATCH_SUGGEST", "1") == "1":
+        if os.getenv("WATCH_SUGGEST", "0") == "1":
             try:
                 _ensure_cols()
                 alts = suggest_alternatives(it)
