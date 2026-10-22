@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Terapeak Research Collector",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Sends Terapeak sold-price data to your eBay agent while you browse Seller Hub.",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
