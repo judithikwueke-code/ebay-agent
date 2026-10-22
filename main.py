@@ -332,6 +332,19 @@ def main():
             misfire_grace_time=1800,
         )
 
+    # Keep order records in step with eBay (cancelled / refunded / dispatched)
+    def order_status_job():
+        from order_status_sync import sync_order_status
+        sync_order_status()
+    scheduler.add_job(
+        order_status_job,
+        IntervalTrigger(minutes=30),
+        id="order_status_sync",
+        name="Order status sync with eBay",
+        replace_existing=True,
+        misfire_grace_time=900,
+    )
+
     # Telegram morning briefing: 7am daily (after 6am research cycle completes)
     scheduler.add_job(
         morning_briefing,

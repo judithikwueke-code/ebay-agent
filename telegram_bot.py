@@ -177,7 +177,7 @@ def evening_summary():
         f"  06:00 tomorrow: morning research cycle fires automatically\n"
         f"  Orders polled every 15min through the night\n"
         f"  Stock monitor at midnight and 06:00\n\n"
-        + (f"ACTION: {pending_orders} order(s) need attention — check CJ wallet and place manually if needed\n" if pending_orders else "All orders handled.\n")
+        + (f"ACTION: {pending_orders} order(s) need attention — see the ORDER alerts above and buy any that are still open\n" if pending_orders else "All orders handled.\n")
     )
     _send(msg)
 
