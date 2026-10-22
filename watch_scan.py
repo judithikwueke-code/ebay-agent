@@ -108,7 +108,12 @@ def find_amazon_match(it: dict) -> tuple[dict | None, str]:
     return None, "no exact match on Amazon"
 
 
+_DRY = False
+
+
 def _set(item_id: str, status: str, note: str = "", listing_id: str = ""):
+    if _DRY:                      # a dry run reports what it would do and changes nothing
+        return
     conn = sqlite3.connect(DB_PATH)
     conn.execute("UPDATE watch_items SET status=?, note=?, listing_id=COALESCE(NULLIF(?,''), listing_id) WHERE item_id=?",
                  (status, note[:300], listing_id, item_id))
@@ -158,6 +163,8 @@ def process_item(it: dict, dry: bool = False) -> str:
 
 
 def process_watch_items(limit: int = 5, dry: bool = False) -> list[str]:
+    global _DRY
+    _DRY = dry
     try:
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
