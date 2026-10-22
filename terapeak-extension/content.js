@@ -88,42 +88,57 @@ function extractStats() {
     }
   }
   // kept for the popup's debug line so we can see what the page really contains
-  data._seen = Object.entries(map).slice(0, 14).map(([k, v]) => `${k}=${v}`).join("; ");
+  const wanted = /sold|sell|price|postage|shipping|sellers|listings|sales/;
+  const entries = Object.entries(map);
+  const rel = entries.filter(([k]) => wanted.test(k) && !/free postage/.test(k));
+  const rest = entries.filter(([k]) => !(wanted.test(k) && !/free postage/.test(k)));
+  data._seen = `[${entries.length} labels] ` + rel.concat(rest).slice(0, 12).map(([k, v]) => `${k}=${v}`).join("; ");
   return data;
 }
 
+const haveEnough = (st) => st.avg_sold_price && (st.sell_through_pct != null || st.total_sold != null);
+let running = false;
+
 async function run() {
+  if (running) return;
+  running = true;
   try {
-    await waitForElement('[class*="stat"], [class*="research"], [class*="summary"], [class*="metric"]', 12000);
-  } catch {
-    // keep going - the page may still have rendered
-  }
-  await new Promise((r) => setTimeout(r, 2500));   // let the cards finish loading
-
-  const stats = extractStats();
-  if (!stats.keyword) {
-    console.log("[Terapeak Collector] No keyword found - not a results page");
-    return;
-  }
-
-  chrome.storage.local.set({ last_attempt: stats });
-  // Only send a record that has the figures the agent needs (never a guess)
-  if (!(stats.avg_sold_price && (stats.sell_through_pct != null || stats.total_sold != null))) {
-    chrome.storage.local.set({ last_attempt: { ...stats, error: "missing_stats" }, last_send_status: "missing stats - see debug" });
-    return;
-  }
-  chrome.storage.local.set({ last_success: stats });
-
-  chrome.runtime.sendMessage({ type: "send", payload: stats }, (resp) => {
-    const err = chrome.runtime.lastError;
-    if (err || !resp) {
-      chrome.storage.local.set({ last_send_status: `network_error: ${err ? err.message : "no response"}` });
-    } else if (resp.ok) {
-      chrome.storage.local.set({ last_send_status: "ok", last_send_time: new Date().toISOString() });
-    } else {
-      chrome.storage.local.set({ last_send_status: resp.error ? `network_error: ${resp.error}` : `server_${resp.status}` });
+    const keyword = getKeyword();
+    if (!keyword) return;
+    let stats = null;
+    // The summary cards load after the listing table - keep trying for about 30 seconds
+    for (let attempt = 0; attempt < 12; attempt++) {
+      await new Promise((r) => setTimeout(r, attempt === 0 ? 3000 : 2500));
+      stats = extractStats();
+      if (haveEnough(stats)) break;
     }
-  });
+    const inTop = window === window.top;
+    if (!stats || !haveEnough(stats)) {
+      // record the failure for the popup, but only from the top frame and only if nothing was sent for this keyword
+      chrome.storage.local.get(["last_success", "last_send_time"], (d) => {
+        const recent = d.last_success && d.last_success.keyword === keyword && d.last_send_time &&
+          (Date.now() - new Date(d.last_send_time).getTime() < 120000);
+        if (!recent && inTop) {
+          chrome.storage.local.set({ last_attempt: { ...(stats || { keyword }), error: "missing_stats" },
+                                     last_send_status: "missing stats - see debug" });
+        }
+      });
+      return;
+    }
+    chrome.storage.local.set({ last_attempt: stats, last_success: stats });
+    chrome.runtime.sendMessage({ type: "send", payload: stats }, (resp) => {
+      const err = chrome.runtime.lastError;
+      if (err || !resp) {
+        chrome.storage.local.set({ last_send_status: `network_error: ${err ? err.message : "no response"}` });
+      } else if (resp.ok) {
+        chrome.storage.local.set({ last_send_status: "ok", last_send_time: new Date().toISOString() });
+      } else {
+        chrome.storage.local.set({ last_send_status: resp.error ? `network_error: ${resp.error}` : `server_${resp.status}` });
+      }
+    });
+  } finally {
+    running = false;
+  }
 }
 
 run();
