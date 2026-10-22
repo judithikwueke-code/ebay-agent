@@ -111,6 +111,72 @@ def find_amazon_match(it: dict) -> tuple[dict | None, str]:
 _DRY = False
 
 
+
+CHILD_WORDS = ("kid", "child", "baby", "infant", "toddler", "costume", "toy", "nursery", "newborn")
+
+
+def _ensure_cols():
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("ALTER TABLE watch_items ADD COLUMN alternatives TEXT")
+        conn.commit()
+    except Exception:
+        pass                                                     # already there
+    conn.close()
+
+
+def suggest_alternatives(it: dict, max_alts: int = 3) -> list[dict]:
+    """Closest SIMILAR (not identical) Amazon products that could compete with this eBay item."""
+    from deal_scan import _ebay_market, _nice, BLOCK_WORDS
+    from research import _is_policy_blocked, _is_vero
+    title = it["title"]
+    q = " ".join(re.sub(r"[^A-Za-z0-9 ]", " ", title).split()[:10])
+    cands = amazon_source.search_amazon(q, max(it.get("price") or 20.0, 10.0) * 4 * (1 + VAT_RATE),
+                                        limit=10, strict=False, min_reviews=20)
+    mk = _ebay_market(title)
+    ref = None
+    if mk:
+        ref = min(mk["p25"], it["price"]) if it.get("price") else mk["p25"]
+    elif it.get("price"):
+        ref = it["price"]
+    if not ref:
+        return []
+    target = (ref - 0.36) / 1.0413
+    alts = []
+    for c in cands:
+        sim = similarity(title, c["title"])
+        low = c["title"].lower()
+        if sim < 0.2 or _is_policy_blocked(c["title"]) or _is_vero(c["title"]) or any(w in low for w in BLOCK_WORDS):
+            continue
+        cost = c["cost_gbp"]
+        if target < cost + MIN_PROFIT:
+            continue
+        price = max(_nice(target, False), _nice(cost + MIN_PROFIT, True))
+        child = any(w in low or w in title.lower() for w in CHILD_WORDS)
+        alts.append({"asin": c["product_id"], "title": c["title"][:90], "amazon_price": round(cost, 2),
+                     "list_at": price, "profit": round(price - cost, 2), "similarity": round(sim, 2),
+                     "rating": c.get("amazon_rating"), "reviews": c.get("amazon_reviews"), "child_safety": child})
+    alts.sort(key=lambda a: (-a["similarity"], -a["profit"]))
+    return alts[:max_alts]
+
+
+def _telegram_alternatives(it: dict, alts: list[dict], why: str):
+    try:
+        from telegram_bot import _send
+    except Exception:
+        return
+    nl = chr(10)
+    lines = ["EBAY ITEM YOU OPENED - NO EXACT AMAZON MATCH", f"  {it['title'][:70]}", f"  eBay: GBP {it.get('price')} | sold today {it.get('sold_today')} | sold {it.get('sold_total')} | watchers {it.get('watchers')}",
+             f"  {it.get('url', '')}", f"  ({why})", "", "CLOSEST SIMILAR PRODUCTS (similar, NOT identical):"]
+    for i, a in enumerate(alts, 1):
+        lines += [f"{i}) {a['title']}", f"   Amazon GBP {a['amazon_price']:.2f} -> list at GBP {a['list_at']:.2f} (profit GBP {a['profit']:.2f}) | similarity {a['similarity']} | {a['rating']} stars, {a['reviews']} reviews",
+                  f"   https://www.amazon.co.uk/dp/{a['asin']}"]
+        if a["child_safety"]:
+            lines.append("   NOTE: child product - check UK safety marking before listing")
+    lines += ["", "To list one, tell Claude: list <ASIN> at <price> (it will use Amazon's own photos and title, not the eBay seller's)."]
+    _send(nl.join(lines))
+
+
 def _set(item_id: str, status: str, note: str = "", listing_id: str = ""):
     if _DRY:                      # a dry run reports what it would do and changes nothing
         return
@@ -129,6 +195,23 @@ def process_item(it: dict, dry: bool = False) -> str:
 
     match, how = find_amazon_match(it)
     if not match:
+        if os.getenv("WATCH_SUGGEST", "1") == "1":
+            try:
+                _ensure_cols()
+                alts = suggest_alternatives(it)
+            except Exception as e:
+                log.warning(f"alternatives failed: {e}")
+                alts = []
+            if alts:
+                if not _DRY:
+                    conn = sqlite3.connect(DB_PATH)
+                    conn.execute("UPDATE watch_items SET alternatives=? WHERE item_id=?", (json.dumps(alts), it["item_id"]))
+                    conn.commit()
+                    conn.close()
+                    _telegram_alternatives(it, alts, how)
+                _set(it["item_id"], "suggested", f"{len(alts)} similar product(s) sent to Telegram")
+                return f"no exact match; {len(alts)} similar product(s): " + "; ".join(
+                    f"{a['asin']} GBP {a['amazon_price']} -> {a['list_at']} (+{a['profit']})" for a in alts)
         _set(it["item_id"], "no_match", how)
         return how
 
