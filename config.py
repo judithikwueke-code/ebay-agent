@@ -358,6 +358,9 @@ SUPPLIER_TRACKING_HOURS = 4
 # a single global £50-£600 band was silently hiding real competition data
 # for anything cheaper (see MIN_PRICE_GBP/MAX_PRICE_GBP fallback above).
 CATEGORIES = {
+    "terapeak":           {"id": "", "weight": 1.6, "fee_key": "everything_else",
+                            "min_price": 3.0, "max_price": 150.0,
+                            "leaf_id": "66861"},   # keywords from Terapeak sold data (no category filter)
     "furniture":          {"id": "175758", "weight": 1.5, "fee_key": "furniture",
                             "min_price": 50.0, "max_price": 600.0},
     "mattress":           {"id": "131588", "weight": 1.4, "fee_key": "furniture",

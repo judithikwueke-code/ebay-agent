@@ -454,6 +454,25 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
         ],
     }
 
+    # Keywords you researched in Terapeak that show real demand (sold count in the last 90 days)
+    seed_keywords.setdefault("terapeak", [])
+    try:
+        min_sold = int(os.getenv("TERAPEAK_MIN_SOLD", "20"))
+        conn = sqlite3.connect(DB_PATH)
+        rows = conn.execute(
+            """
+            SELECT keyword, MAX(total_sold) FROM terapeak_cache
+            WHERE fetched_at >= datetime('now', ?) AND total_sold >= ?
+            GROUP BY keyword ORDER BY MAX(total_sold) DESC
+            """,
+            (f"-{TERAPEAK_TTL_DAYS * 4} days", min_sold),
+        ).fetchall()
+        conn.close()
+        seed_keywords["terapeak"] = [r[0] for r in rows]
+        log.info(f"Terapeak seeds: {len(rows)} keyword(s) with >= {min_sold} sold")
+    except Exception as e:
+        log.debug(f"No Terapeak seeds: {e}")
+
     # Extra keywords from a file (one per line: category_key|keyword) — lets a run be widened without code changes.
     extra_file = os.getenv("EXTRA_KEYWORDS_FILE")
     if extra_file and os.path.exists(extra_file):
