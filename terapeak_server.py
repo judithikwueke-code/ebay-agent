@@ -5,6 +5,7 @@ The Chrome extension POSTs Terapeak research data here as you browse
 Seller Hub. This server saves it to the local DB so the research cycle
 can use real sold-price data instead of the bestMatch active-listing proxy.
 """
+import json
 import logging
 import os
 import sqlite3
@@ -134,6 +135,75 @@ def list_cache():
         }
         for r in rows
     ])
+
+
+
+_ITEM_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS watch_items (
+        item_id TEXT PRIMARY KEY,
+        url TEXT, title TEXT, price REAL, seller TEXT, seller_type TEXT, feedback INTEGER,
+        sold_today INTEGER, sold_total INTEGER, in_baskets INTEGER, watchers INTEGER, available INTEGER,
+        condition TEXT, brand TEXT, mpn TEXT, ean TEXT, model TEXT, images TEXT,
+        captured_at TEXT, updated_at TEXT, status TEXT DEFAULT 'new', note TEXT, listing_id TEXT
+    );
+"""
+
+
+def _save_item(d: dict) -> bool:
+    item_id = str(d.get("item_id") or "").strip()
+    title = (d.get("title") or "").strip()
+    if not item_id or not title:
+        return False
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    vals = (
+        item_id, d.get("url"), title, d.get("price"), d.get("seller"), d.get("seller_type"), d.get("feedback"),
+        d.get("sold_today"), d.get("sold_total"), d.get("in_baskets"), d.get("watchers"), d.get("available"),
+        d.get("condition"), d.get("brand"), d.get("mpn"), d.get("ean"), d.get("model"),
+        json.dumps(d.get("images") or []), now, now,
+    )
+    for path in TARGET_DBS:
+        try:
+            conn = sqlite3.connect(path)
+            conn.executescript(_ITEM_SCHEMA)
+            conn.execute(
+                """
+                INSERT INTO watch_items
+                  (item_id, url, title, price, seller, seller_type, feedback, sold_today, sold_total, in_baskets,
+                   watchers, available, condition, brand, mpn, ean, model, images, captured_at, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(item_id) DO UPDATE SET
+                  price=excluded.price, sold_today=excluded.sold_today, sold_total=excluded.sold_total,
+                  in_baskets=excluded.in_baskets, watchers=excluded.watchers, available=excluded.available,
+                  brand=COALESCE(NULLIF(excluded.brand,''), watch_items.brand),
+                  mpn=COALESCE(NULLIF(excluded.mpn,''), watch_items.mpn),
+                  ean=COALESCE(NULLIF(excluded.ean,''), watch_items.ean),
+                  model=COALESCE(NULLIF(excluded.model,''), watch_items.model),
+                  updated_at=excluded.updated_at
+                """,
+                vals,
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            log.warning(f"watch_items save to {path} failed: {e}")
+    log.info(f"Item captured: {item_id} | {title[:50]} | GBP {d.get('price')} | sold_today={d.get('sold_today')} "
+             f"sold={d.get('sold_total')} baskets={d.get('in_baskets')} watchers={d.get('watchers')}")
+    return True
+
+
+@app.route("/ebay_item", methods=["OPTIONS"])
+def item_options():
+    return jsonify({}), 200
+
+
+@app.post("/ebay_item")
+def receive_item():
+    if not _auth():
+        return jsonify({"error": "unauthorized"}), 401
+    data = request.get_json(force=True, silent=True) or {}
+    if _save_item(data):
+        return jsonify({"status": "saved", "item_id": data.get("item_id")}), 200
+    return jsonify({"error": "missing item_id/title"}), 400
 
 
 @app.get("/ping")

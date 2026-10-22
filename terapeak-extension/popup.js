@@ -1,4 +1,9 @@
-chrome.storage.local.get(["last_success", "last_send_status", "last_send_time", "last_attempt"], (data) => {
+chrome.storage.local.get(["last_success", "last_send_status", "last_send_time", "last_attempt", "last_item", "last_item_status"], (data) => {
+  const it = data.last_item;
+  if (it) {
+    const el = document.getElementById("item_line");
+    if (el) el.textContent = `Last product page: ${(it.title || "").slice(0, 38)} | GBP ${it.price} | sold today ${it.sold_today ?? "-"}, sold ${it.sold_total ?? "-"}, baskets ${it.in_baskets ?? "-"}, watchers ${it.watchers ?? "-"} | ${data.last_item_status || ""}`;
+  }
   // Always show the LATEST attempt (an older success could be stale)
   const s = data.last_attempt || data.last_success || {};
   const statusEl = document.getElementById("status");

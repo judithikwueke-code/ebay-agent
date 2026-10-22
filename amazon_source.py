@@ -117,7 +117,8 @@ def _hires(img_url: str) -> str:
     return re.sub(r"\._[A-Za-z0-9_,%-]+_\.", ".", img_url or "")
 
 
-def search_amazon(keyword: str, max_price_gbp: float, limit: int = 4) -> list[dict]:
+def search_amazon(keyword: str, max_price_gbp: float, limit: int = 4, strict: bool = True,
+                  min_reviews: int | None = None) -> list[dict]:
     """
     Search amazon.co.uk and return up to `limit` candidates in supplier.py's shape.
     Skips sponsored cards, low-rated / low-review products and anything over max_price_gbp.
@@ -155,15 +156,25 @@ def search_amazon(keyword: str, max_price_gbp: float, limit: int = 4) -> list[di
                     if m:
                         n = float(m.group(1).replace(",", ""))
                         reviews = int(n * {"": 1, "k": 1000, "m": 1000000}[m.group(2).lower()])
-                if rating < MIN_RATING or reviews < MIN_REVIEWS:
+                if rating < MIN_RATING or reviews < (MIN_REVIEWS if min_reviews is None else min_reviews):
                     continue
-                title_el = c.locator("h2")
-                title = title_el.first.inner_text().strip() if title_el.count() else keyword
+                # Some card layouts put only the brand in the first <h2>; take the longest of the h2 texts
+                # and the product image's alt text, which carries the full title.
+                texts = []
+                for h2 in c.locator("h2").all():
+                    try:
+                        texts.append(h2.inner_text().strip())
+                    except Exception:
+                        pass
+                alt = c.locator("img.s-image")
+                if alt.count():
+                    texts.append((alt.first.get_attribute("alt") or "").strip())
+                title = max(texts, key=len) if texts else keyword
                 # Relevance: every meaningful keyword word (matched on its first 5 letters) must
                 # appear in the title, otherwise "electric planer" matches a manual hand plane.
                 words = [w[:5] for w in re.findall(r"[a-z0-9]+", keyword.lower())
                          if len(w) >= 4 and w not in ("with", "for", "and", "the")]
-                if any(w not in title.lower() for w in words):
+                if strict and any(w not in title.lower() for w in words):
                     continue
                 img_el = c.locator("img.s-image")
                 img = _hires(img_el.first.get_attribute("src")) if img_el.count() else ""

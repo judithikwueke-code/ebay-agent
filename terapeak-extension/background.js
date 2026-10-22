@@ -1,11 +1,12 @@
-// Sends the captured Terapeak numbers to the agent. Done here (not in the page) because the
-// Terapeak page is HTTPS and Chrome blocks it from calling an HTTP server directly.
-const SERVER = "http://204.168.194.157:8765/terapeak";
+// Sends captured data to the agent. Done here (not in the page) because eBay pages are HTTPS and Chrome
+// blocks them from calling an HTTP server directly.
+const BASE = "http://204.168.194.157:8765";
 const API_KEY = "b1e7ff746dd94281ffac3ae6856f89c9";
+const ROUTES = { send: "/terapeak", item: "/ebay_item" };
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || msg.type !== "send") return;
-  fetch(SERVER, {
+  if (!msg || !ROUTES[msg.type]) return;
+  fetch(BASE + ROUTES[msg.type], {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
     body: JSON.stringify(msg.payload),

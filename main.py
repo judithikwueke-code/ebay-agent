@@ -318,6 +318,20 @@ def main():
             replace_existing=True,
         )
 
+    # eBay product pages captured by the Chrome extension -> exact Amazon match -> listing (account 2 feature)
+    if os.getenv("WATCH_ENABLED", "0") == "1":
+        def watch_items_job():
+            from watch_scan import process_watch_items
+            process_watch_items(limit=int(os.getenv("WATCH_LIMIT", "5")))
+        scheduler.add_job(
+            watch_items_job,
+            IntervalTrigger(minutes=int(os.getenv("WATCH_INTERVAL_MIN", "45"))),
+            id="watch_items",
+            name="Captured eBay items -> Amazon match -> list",
+            replace_existing=True,
+            misfire_grace_time=1800,
+        )
+
     # Telegram morning briefing: 7am daily (after 6am research cycle completes)
     scheduler.add_job(
         morning_briefing,
