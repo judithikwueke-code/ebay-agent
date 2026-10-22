@@ -189,14 +189,37 @@ def alert_new_listing(title: str, price: float, margin: float, supplier: str, eb
     )
 
 
-def alert_new_order(title: str, sale: float, profit: float, buyer: str):
-    _send(
-        f"ORDER RECEIVED!\n"
-        f"  {title[:50]}\n"
-        f"  Sale: £{sale:.2f} | Profit: £{profit:.2f}\n"
-        f"  Buyer: {buyer}\n"
-        f"  Go to CJ and place order now — dispatch deadline in 5 days"
-    )
+def alert_new_order(title: str, sale: float, profit: float, buyer: str, quantity: int = 1,
+                    supplier: str = "", source_url: str = "", address: dict | None = None,
+                    ebay_order_id: str = "", cost_total: float | None = None, fees: float | None = None):
+    lines = [
+        "ORDER RECEIVED!",
+        f"  {title[:60]}",
+        f"  QUANTITY: {quantity}",
+        f"  Sale total: GBP {sale:.2f}",
+    ]
+    if cost_total is not None:
+        lines.append(f"  Cost (all {quantity}, inc VAT): GBP {cost_total:.2f} | eBay fees: GBP {(fees or 0):.2f}")
+    lines.append(f"  PROFIT: GBP {profit:.2f}")
+    if ebay_order_id:
+        lines.append(f"  eBay order: {ebay_order_id}")
+    lines.append("")
+    if supplier == "amazon":
+        lines += ["BUY ON AMAZON NOW:", f"  {source_url}", f"  Quantity to buy: {quantity}",
+                  "  Dispatch to the buyer within 2 days."]
+    elif supplier == "sportsdirect":
+        lines += ["BUY ON SPORTS DIRECT NOW:", f"  {source_url}", f"  Quantity to buy: {quantity}"]
+    elif supplier:
+        lines += [f"Supplier: {supplier} (placed automatically; check the supplier account if it fails)"]
+    if address:
+        lines += ["", "DELIVER TO:", f"  {address.get('name', buyer)}", f"  {address.get('line1', '')}"]
+        if address.get("line2"):
+            lines.append(f"  {address['line2']}")
+        lines += [f"  {address.get('city', '')}", f"  {address.get('postcode', '')}",
+                  f"  Phone: {address.get('phone', '') or 'not given'}"]
+    if supplier in ("amazon", "sportsdirect") and ebay_order_id:
+        lines += ["", f"After it ships, add tracking: python upload_tracking.py {ebay_order_id} TRACKING 'Royal Mail'"]
+    _send(chr(10).join(lines))
 
 
 def alert_stock_issue(title: str, ebay_id: str, issue: str):

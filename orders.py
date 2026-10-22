@@ -14,6 +14,15 @@ from db import (
     get_pending_orders, orders_without_tracking,
 )
 from supplier import place_supplier_order, get_tracking
+from config import CATEGORIES, calculate_ebay_fees, total_cost_with_vat
+
+
+def _source_link(supplier: str, product_id: str) -> str:
+    if supplier == "amazon":
+        return f"https://www.amazon.co.uk/dp/{product_id}"
+    if supplier == "sportsdirect":
+        return f"https://www.sportsdirect.com/{product_id}"
+    return ""
 
 log = logging.getLogger(__name__)
 
@@ -126,7 +135,8 @@ def process_new_orders():
             # eBay Fulfillment API uses legacyItemId (the public listing number),
             # not listingId. Fall back to sku-based lookup if listing not found.
             listing_id = item.get("legacyItemId") or item.get("listingId", "")
-            sale_price = float(item.get("lineItemCost", {}).get("value", 0))
+            sale_price = float(item.get("lineItemCost", {}).get("value", 0))   # total for the whole line
+            quantity = max(int(item.get("quantity", 1) or 1), 1)
 
             product = get_product_by_listing(listing_id)
             if not product:
@@ -137,6 +147,10 @@ def process_new_orders():
             supplier_product_id = product["supplier_product_id"]
             cost = product["cost_gbp"]
             is_furniture = product["category"] == "furniture"
+            fee_key = CATEGORIES.get(product["category"], {}).get("fee_key", "everything_else")
+            cost_total = round(total_cost_with_vat(cost, 0) * quantity, 2)      # every unit, VAT-inclusive
+            fees = round(calculate_ebay_fees(sale_price, fee_key), 2)
+            profit = round(sale_price - cost_total - fees, 2)
 
             # Record order in DB first
             insert_order(
@@ -144,10 +158,12 @@ def process_new_orders():
                 product_id=product["id"],
                 supplier=supplier,
                 sale_price_gbp=sale_price,
-                cost_gbp=cost,
+                cost_gbp=cost_total,
                 buyer_name=buyer_name,
                 buyer_address=str(buyer_address),
                 is_furniture=is_furniture,
+                quantity=quantity,
+                profit_gbp=profit,
             )
 
             if is_furniture:
@@ -161,13 +177,18 @@ def process_new_orders():
             # Telegram alert for every new order
             try:
                 from telegram_bot import alert_new_order
-                profit = sale_price - cost - (sale_price * 0.13)
-                alert_new_order(product["title"], sale_price, profit, buyer_name)
+                alert_new_order(
+                    product["title"], sale_price, profit, buyer_name,
+                    quantity=quantity, supplier=supplier,
+                    source_url=_source_link(supplier, supplier_product_id),
+                    address=buyer_address, ebay_order_id=ebay_order_id,
+                    cost_total=cost_total, fees=fees,
+                )
             except Exception:
                 pass
 
             # Place order with supplier
-            result = place_supplier_order(supplier, supplier_product_id, buyer_address)
+            result = place_supplier_order(supplier, supplier_product_id, buyer_address, quantity)
             if result:
                 update_order(
                     ebay_order_id,

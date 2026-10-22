@@ -73,7 +73,7 @@ def _run_startup_research_if_missed():
             f"0 listings created today) — running now"
         )
         research_and_list()
-    elif count < DAILY_LISTING_CAP:
+    elif count < DAILY_LISTING_CAP and "cj" in SUPPLIER_PRIORITY:
         log.info(
             f"Startup: only {count} listings today vs cap {DAILY_LISTING_CAP} — "
             f"running CJ catalogue sweep to fill gap"

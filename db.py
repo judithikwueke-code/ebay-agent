@@ -124,16 +124,21 @@ def get_product_by_listing(ebay_listing_id):
 
 
 def insert_order(ebay_order_id, product_id, supplier, sale_price_gbp, cost_gbp,
-                 buyer_name, buyer_address, is_furniture=False):
-    profit = sale_price_gbp - cost_gbp
+                 buyer_name, buyer_address, is_furniture=False, quantity=1, profit_gbp=None):
+    """cost_gbp is the TOTAL cost for the whole line (all units); sale_price_gbp the total paid."""
+    profit = profit_gbp if profit_gbp is not None else sale_price_gbp - cost_gbp
     with get_conn() as conn:
+        try:
+            conn.execute("ALTER TABLE orders ADD COLUMN quantity INTEGER DEFAULT 1")
+        except Exception:
+            pass  # column already there
         conn.execute("""
             INSERT OR IGNORE INTO orders
             (ebay_order_id, product_id, supplier, sale_price_gbp, cost_gbp,
-             profit_gbp, buyer_name, buyer_address, is_furniture)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             profit_gbp, buyer_name, buyer_address, is_furniture, quantity)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (ebay_order_id, product_id, supplier, sale_price_gbp, cost_gbp,
-              profit, buyer_name, buyer_address, int(is_furniture)))
+              profit, buyer_name, buyer_address, int(is_furniture), quantity))
 
 
 def update_order(ebay_order_id, **kwargs):

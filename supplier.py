@@ -640,11 +640,13 @@ def find_best_supplier(keyword: str, target_sell_price_gbp: float, is_furniture:
     return best
 
 
-def place_supplier_order(supplier: str, product_id: str, buyer_address: dict) -> dict | None:
+def place_supplier_order(supplier: str, product_id: str, buyer_address: dict, quantity: int = 1) -> dict | None:
     """
     Place an order with the supplier's API.
     Returns: {supplier_order_id} or None on failure.
     """
+    if quantity > 1 and supplier not in ("amazon", "sportsdirect"):
+        log.warning(f"Order for {quantity} units of {product_id} via {supplier}: this supplier path places ONE unit - check it")
     if supplier == "wholesalebeds":
         return _place_wholesalebeds_order(product_id, buyer_address)
     elif supplier == "avasam":
@@ -656,15 +658,15 @@ def place_supplier_order(supplier: str, product_id: str, buyer_address: dict) ->
     elif supplier == "bigbuy":
         return _place_bigbuy_order(product_id, buyer_address)
     elif supplier == "amazon":
-        return _place_amazon_order(product_id, buyer_address)
+        return _place_amazon_order(product_id, buyer_address, quantity)
     elif supplier == "sportsdirect":
-        return _place_sportsdirect_order(product_id, buyer_address)
+        return _place_sportsdirect_order(product_id, buyer_address, quantity)
     else:
         log.warning(f"No order API implemented for supplier '{supplier}' — manual fulfilment required")
         return None
 
 
-def _place_sportsdirect_order(product_path: str, addr: dict) -> dict | None:
+def _place_sportsdirect_order(product_path: str, addr: dict, quantity: int = 1) -> dict | None:
     """Sports Direct items are bought by hand: alert with the link and the buyer's address."""
     from datetime import datetime, timezone
     from monitor import send_alert
@@ -675,6 +677,7 @@ def _place_sportsdirect_order(product_path: str, addr: dict) -> dict | None:
         "New eBay sale - buy this on Sports Direct and have it delivered to the customer.",
         "",
         f"https://www.sportsdirect.com/{product_path}",
+        f"QUANTITY TO BUY: {quantity}",
         f"Internal reference: {order_ref}",
         "",
         "Deliver to:",
@@ -687,7 +690,7 @@ def _place_sportsdirect_order(product_path: str, addr: dict) -> dict | None:
     return {"supplier_order_id": order_ref}
 
 
-def _place_amazon_order(asin: str, addr: dict) -> dict | None:
+def _place_amazon_order(asin: str, addr: dict, quantity: int = 1) -> dict | None:
     """
     Amazon has no buyer API, so the order is placed by hand. This sends the alert
     with the product link and delivery address and returns a placeholder order ID.
@@ -700,7 +703,7 @@ def _place_amazon_order(asin: str, addr: dict) -> dict | None:
     # Optional automatic ordering (see auto_order.py). Falls through to the manual alert on any problem.
     try:
         from auto_order import place_order
-        auto = place_order(asin, addr)
+        auto = place_order(asin, addr, quantity)
         if auto and auto.get("supplier_order_id"):
             return {"supplier_order_id": auto["supplier_order_id"]}
     except Exception as e:
@@ -710,6 +713,7 @@ def _place_amazon_order(asin: str, addr: dict) -> dict | None:
     body = (
         "New eBay sale - buy this on Amazon UK and ship to the customer.\n\n"
         f"https://www.amazon.co.uk/dp/{asin}\n"
+        f"QUANTITY TO BUY: {quantity}\n"
         f"Internal reference: {order_ref}\n\n"
         "Deliver to:\n"
         f"{addr.get('name', '')}\n{addr.get('line1', '')}\n{addr.get('line2', '')}\n"

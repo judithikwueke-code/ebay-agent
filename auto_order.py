@@ -181,7 +181,7 @@ def _login(page, acc: dict):
         raise Challenge("login did not complete")
 
 
-def _product_ok(page, asin: str, max_total: float) -> float:
+def _product_ok(page, asin: str, max_total: float, quantity: int = 1) -> float:
     page.goto(f"https://www.amazon.co.uk/dp/{asin}", wait_until="domcontentloaded", timeout=45000)
     _check_challenge(page)
     if page.locator("span#productTitle").count() == 0:
@@ -199,8 +199,8 @@ def _product_ok(page, asin: str, max_total: float) -> float:
         raise RuntimeError("could not read price")
     if page.locator("#buy-now-button").count() == 0:
         raise RuntimeError("no Buy Now button (out of stock / unavailable)")
-    if price > max_total:
-        raise RuntimeError(f"price GBP {price:.2f} is above the limit GBP {max_total:.2f}")
+    if price * quantity > max_total:
+        raise RuntimeError(f"price GBP {price:.2f} x {quantity} is above the limit GBP {max_total:.2f}")
     return price
 
 
@@ -245,7 +245,7 @@ def _review_total(page) -> float | None:
     return None
 
 
-def _run_order(acc: dict, asin: str, addr: dict, max_total: float, dry: bool) -> dict:
+def _run_order(acc: dict, asin: str, addr: dict, max_total: float, dry: bool, quantity: int = 1) -> dict:
     from playwright.sync_api import sync_playwright
     os.makedirs(os.path.join(PROFILES_DIR, acc["name"]), exist_ok=True)
     proxy = os.getenv("AMAZON_PROXY")  # e.g. http://user:pass@uk-proxy:port - a UK IP is safer than a datacentre IP
@@ -258,7 +258,10 @@ def _run_order(acc: dict, asin: str, addr: dict, max_total: float, dry: bool) ->
         page = ctx.new_page()
         try:
             _login(page, acc)
-            price = _product_ok(page, asin, max_total)
+            price = _product_ok(page, asin, max_total, quantity)
+            if quantity > 1:
+                page.select_option("#quantity", str(quantity))
+                time.sleep(1)
             page.click("#buy-now-button")
             page.wait_for_load_state("domcontentloaded")
             time.sleep(3)
@@ -291,7 +294,7 @@ def _run_order(acc: dict, asin: str, addr: dict, max_total: float, dry: bool) ->
 
 
 # --------------------------------------------------------------------------- public API
-def place_order(asin: str, addr: dict) -> dict | None:
+def place_order(asin: str, addr: dict, quantity: int = 1) -> dict | None:
     """
     Returns {"supplier_order_id": ...} when an order was really placed, {"dry_run": True, ...} in dry mode,
     or None if the caller should fall back to the manual alert.
@@ -313,11 +316,11 @@ def place_order(asin: str, addr: dict) -> dict | None:
         if not expected:
             log.warning(f"{asin}: no stored cost to check against - manual ordering")
             return None
-        max_total = round(expected * (1 + tol) + 1.0, 2)
+        max_total = round((expected * (1 + tol) + 1.0) * quantity, 2)
         dry = mode == "dry"
         try:
             time.sleep(random.uniform(5, 20))
-            res = _run_order(acc, asin, addr, max_total, dry)
+            res = _run_order(acc, asin, addr, max_total, dry, quantity)
         except Challenge as c:
             state.setdefault(acc["name"], {})["disabled"] = True
             _save_state(state)
