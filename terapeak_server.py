@@ -56,7 +56,8 @@ _SCHEMA = """
     CREATE INDEX IF NOT EXISTS idx_terapeak_kw ON terapeak_cache(keyword, fetched_at);
 """
 # every agent database that should see this data (comma-separated paths in TERAPEAK_EXTRA_DBS)
-EXTRA_DBS = [p for p in os.getenv("TERAPEAK_EXTRA_DBS", "/var/www/ebay-agent-2/ebay_agent2.db").split(",") if p.strip()]
+# Terapeak data is kept for account 2 only (set TERAPEAK_DBS to a comma-separated list to change that)
+TARGET_DBS = [p.strip() for p in os.getenv("TERAPEAK_DBS", "/var/www/ebay-agent-2/ebay_agent2.db").split(",") if p.strip()]
 
 
 def _save(data: dict):
@@ -73,7 +74,7 @@ def _save(data: dict):
         data.get("date_range", "90d"),
         datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
     )
-    for path in [DB_PATH] + EXTRA_DBS:
+    for path in TARGET_DBS:
         try:
             conn = sqlite3.connect(path)
             conn.executescript(_SCHEMA)
@@ -114,7 +115,7 @@ def receive():
 def list_cache():
     if not _auth():
         return jsonify({"error": "unauthorized"}), 401
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(TARGET_DBS[0])
     rows = conn.execute(
         """
         SELECT keyword, avg_sold_price, sell_through_pct, total_sold, fetched_at
