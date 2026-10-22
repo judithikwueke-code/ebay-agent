@@ -462,10 +462,11 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
         rows = conn.execute(
             """
             SELECT keyword, MAX(total_sold) FROM terapeak_cache
-            WHERE fetched_at >= datetime('now', ?) AND total_sold >= ?
-            GROUP BY keyword ORDER BY MAX(total_sold) DESC
+            WHERE fetched_at >= datetime('now', ?)
+              AND (total_sold >= ? OR (total_sold IS NULL AND sell_through_pct >= ?))
+            GROUP BY keyword ORDER BY MAX(COALESCE(total_sold, sell_through_pct)) DESC
             """,
-            (f"-{TERAPEAK_TTL_DAYS * 4} days", min_sold),
+            (f"-{TERAPEAK_TTL_DAYS * 4} days", min_sold, float(os.getenv("TERAPEAK_MIN_SELL_THROUGH", "15"))),
         ).fetchall()
         conn.close()
         seed_keywords["terapeak"] = [r[0] for r in rows]

@@ -52,23 +52,33 @@ function parseNum(text) {
  * Build {label -> value text} by finding each short text node that is not itself a number and
  * looking for a number-like text in the same small container (up to 3 levels up).
  */
+function ownText(el) {
+  // text sitting directly in this element (ignores child elements such as the little (i) info icon)
+  let t = "";
+  for (const n of el.childNodes) if (n.nodeType === 3) t += n.textContent;
+  return clean(t);
+}
+
 function scanStatCards() {
   const map = {};
-  const leaves = Array.from(document.querySelectorAll("*")).filter(
-    (el) => el.children.length === 0 && clean(el.textContent).length >= 3 && clean(el.textContent).length <= 32
-  );
-  for (const el of leaves) {
-    const label = clean(el.textContent);
-    if (looksLikeValue(label)) continue;
+  const cands = Array.from(document.querySelectorAll("body *")).filter((el) => {
+    const t = ownText(el);
+    return t.length >= 3 && t.length <= 32 && !looksLikeValue(t) && !/^\d/.test(t);
+  });
+  for (const el of cands) {
+    const label = ownText(el);
+    const key = label.toLowerCase();
+    if (key in map) continue;
     let node = el;
     for (let up = 0; up < 3 && node.parentElement; up++) {
       node = node.parentElement;
-      const rest = clean(node.textContent.replace(label, ""));
-      if (rest.length > 0 && rest.length <= 18 && looksLikeValue(rest)) {
-        if (!(label.toLowerCase() in map)) map[label.toLowerCase()] = rest;
+      const full = clean(node.textContent);
+      if (full.length > 90) break;
+      const rest = clean(full.replace(label, ""));
+      if (rest.length > 0 && rest.length <= 20 && looksLikeValue(rest)) {
+        map[key] = rest;
         break;
       }
-      if (clean(node.textContent).length > 80) break;
     }
   }
   return map;
