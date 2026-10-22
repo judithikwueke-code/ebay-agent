@@ -84,7 +84,8 @@ def find_amazon_match(it: dict) -> tuple[dict | None, str]:
     queries = []
     if it.get("ean"):
         queries.append(("barcode", it["ean"]))
-    code = it.get("mpn") or it.get("model")
+    code = next((c for c in (it.get("mpn"), it.get("model"))
+                 if c and len(c) >= 4 and any(ch.isdigit() for ch in c)), None)   # ignore junk like "SN"
     if it.get("brand") and code:
         queries.append(("brand+model", f"{it['brand']} {code}"))
     queries.append(("title", " ".join(re.sub(r"[^A-Za-z0-9 ]", " ", title).split()[:10])))
