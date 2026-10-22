@@ -24,7 +24,7 @@ chrome.storage.local.get(["last_success", "last_send_status", "last_send_time", 
     ? new Date(data.last_send_time).toLocaleTimeString()
     : "—";
 
-  if (s.error) {
-    document.getElementById("debug").textContent = `Debug: ${s.error}. If this persists, eBay may have updated their page layout — contact your agent.`;
+  if (s.error || s._seen) {
+    document.getElementById("debug").textContent = `Debug: ${s.error || "ok"} | seen on page: ${s._seen || "nothing"}`;
   }
 });
