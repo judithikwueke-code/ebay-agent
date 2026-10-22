@@ -4,6 +4,7 @@ and syncs tracking numbers back to eBay.
 """
 
 import logging
+import os
 import requests
 from datetime import datetime, timezone, timedelta
 from config import (
@@ -150,6 +151,9 @@ def process_new_orders():
             fee_key = CATEGORIES.get(product["category"], {}).get("fee_key", "everything_else")
             cost_total = round(total_cost_with_vat(cost, 0) * quantity, 2)      # every unit, VAT-inclusive
             fees = round(calculate_ebay_fees(sale_price, fee_key), 2)
+            # Promoted Listings: the ad rate is charged on the sale, plus 20% VAT (2% -> 2.4%)
+            if os.getenv("PROMOTE_CAMPAIGN_ID"):
+                fees += round(sale_price * float(os.getenv("PROMOTE_RATE", "2.0")) / 100 * 1.2, 2)
             profit = round(sale_price - cost_total - fees, 2)
 
             # Record order in DB first

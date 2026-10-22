@@ -199,7 +199,7 @@ def alert_new_order(title: str, sale: float, profit: float, buyer: str, quantity
         f"  Sale total: GBP {sale:.2f}",
     ]
     if cost_total is not None:
-        lines.append(f"  Cost (all {quantity}, inc VAT): GBP {cost_total:.2f} | eBay fees: GBP {(fees or 0):.2f}")
+        lines.append(f"  Cost (all {quantity}, inc VAT): GBP {cost_total:.2f} | eBay + ad fees: GBP {(fees or 0):.2f}")
     lines.append(f"  PROFIT: GBP {profit:.2f}")
     if ebay_order_id:
         lines.append(f"  eBay order: {ebay_order_id}")
