@@ -31,6 +31,9 @@ LONDON = ZoneInfo("Europe/London")
 
 
 def _send(msg: str, silent: bool = False):
+    label = os.getenv("ACCOUNT_LABEL")
+    if label:                                     # which account's agent is talking
+        msg = f"[{label}] " + msg
     try:
         requests.post(
             f"https://api.telegram.org/bot{TOKEN}/sendMessage",
