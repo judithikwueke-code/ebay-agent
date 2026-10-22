@@ -697,6 +697,15 @@ def _place_amazon_order(asin: str, addr: dict) -> dict | None:
     from datetime import datetime, timezone
     from monitor import send_alert
 
+    # Optional automatic ordering (see auto_order.py). Falls through to the manual alert on any problem.
+    try:
+        from auto_order import place_order
+        auto = place_order(asin, addr)
+        if auto and auto.get("supplier_order_id"):
+            return {"supplier_order_id": auto["supplier_order_id"]}
+    except Exception as e:
+        log.warning(f"auto-order unavailable: {e}")
+
     order_ref = f"AMZ-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{asin}"
     body = (
         "New eBay sale - buy this on Amazon UK and ship to the customer.\n\n"
@@ -868,6 +877,9 @@ def get_tracking(supplier: str, supplier_order_id: str) -> str | None:
             # (db.update_order) once Wholesale Beds emails dispatch confirmation.
             log.debug(f"Wholesale Beds order {supplier_order_id}: tracking is manual, not polled")
             return None
+        if supplier == "amazon" and not str(supplier_order_id).startswith("AMZ-"):
+            from auto_order import get_tracking as _amz_tracking   # real Amazon order number
+            return _amz_tracking(supplier_order_id)
         if supplier in ("amazon", "sportsdirect"):
             log.debug(f"Amazon order {supplier_order_id}: tracking is manual, not polled")
             return None
