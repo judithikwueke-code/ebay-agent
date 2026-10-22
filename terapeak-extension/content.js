@@ -59,9 +59,24 @@ function ownText(el) {
   return clean(t);
 }
 
-function scanStatCards() {
+let shadowRoots = 0;
+
+function allElements(root) {
+  // every element, including those inside open shadow roots
+  const out = [];
+  const walk = (node) => {
+    for (const el of node.querySelectorAll("*")) {
+      out.push(el);
+      if (el.shadowRoot) { shadowRoots++; walk(el.shadowRoot); }
+    }
+  };
+  walk(root);
+  return out;
+}
+
+function scanDom() {
   const map = {};
-  const cands = Array.from(document.querySelectorAll("body *")).filter((el) => {
+  const cands = allElements(document).filter((el) => {
     const t = ownText(el);
     return t.length >= 3 && t.length <= 32 && !looksLikeValue(t) && !/^\d/.test(t);
   });
@@ -70,19 +85,50 @@ function scanStatCards() {
     const key = label.toLowerCase();
     if (key in map) continue;
     let node = el;
-    for (let up = 0; up < 3 && node.parentElement; up++) {
-      node = node.parentElement;
+    for (let up = 0; up < 3 && node; up++) {
+      node = node.parentElement || (node.getRootNode && node.getRootNode().host) || null;
+      if (!node) break;
       const full = clean(node.textContent);
       if (full.length > 90) break;
       const rest = clean(full.replace(label, ""));
-      if (rest.length > 0 && rest.length <= 20 && looksLikeValue(rest)) {
-        map[key] = rest;
-        break;
-      }
+      if (rest.length > 0 && rest.length <= 20 && looksLikeValue(rest)) { map[key] = rest; break; }
     }
   }
   return map;
 }
+
+// Read the page as the plain text lines a person sees: "value" then "label" (or the other way round)
+function scanText() {
+  const map = {};
+  const add = (key, val) => { (map[key] = map[key] || []).includes(val) || map[key].push(val); };
+  const lines = (document.body.innerText || "").split("\n").map(clean).filter(Boolean);
+  const isLabel = (t) => t.length >= 3 && t.length <= 32 && !looksLikeValue(t) && !/^\d/.test(t);
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (looksLikeValue(lines[i]) && isLabel(lines[i + 1])) add(lines[i + 1].toLowerCase(), lines[i]);   // value above label
+    if (isLabel(lines[i]) && looksLikeValue(lines[i + 1])) add(lines[i].toLowerCase(), lines[i + 1]);   // label above value
+  }
+  return map;
+}
+
+function scanStatCards() {
+  const dom = scanDom();
+  const text = scanText();
+  const map = {};
+  for (const [k, v] of Object.entries(dom)) map[k] = [v];
+  for (const [k, vs] of Object.entries(text)) {
+    map[k] = (map[k] || []).concat(vs.filter((v) => !(map[k] || []).includes(v)));
+  }
+  return map;
+}
+
+// each field only accepts a value of the right kind (a percentage is never a price, etc.)
+const FIELD_TYPE = {
+  avg_sold_price: (v) => v.includes("£"),
+  sell_through_pct: (v) => v.includes("%"),
+  total_sold: (v) => !v.includes("£") && !v.includes("%"),
+  total_listings: (v) => !v.includes("£") && !v.includes("%"),
+  avg_shipping: (v) => v.includes("£"),
+};
 
 function extractStats() {
   const map = scanStatCards();
@@ -93,8 +139,10 @@ function extractStats() {
     source_url: window.location.href,
   };
   for (const [field, names] of Object.entries(LABELS)) {
-    for (const name of names) {
-      if (name in map) { data[field] = parseNum(map[name]); break; }
+    outer: for (const name of names) {
+      for (const val of map[name] || []) {
+        if (FIELD_TYPE[field](val)) { data[field] = parseNum(val); break outer; }
+      }
     }
   }
   // kept for the popup's debug line so we can see what the page really contains
@@ -102,7 +150,10 @@ function extractStats() {
   const entries = Object.entries(map);
   const rel = entries.filter(([k]) => wanted.test(k) && !/free postage/.test(k));
   const rest = entries.filter(([k]) => !(wanted.test(k) && !/free postage/.test(k)));
-  data._seen = `[${entries.length} labels] ` + rel.concat(rest).slice(0, 12).map(([k, v]) => `${k}=${v}`).join("; ");
+  const frames = document.querySelectorAll("iframe").length;
+  const idx = (document.body.innerText || "").toLowerCase().indexOf("avg sold price");
+  const hasText = idx >= 0 ? "text-has-avg-sold-price" : "no-avg-sold-price-text";
+  data._seen = `[${entries.length} labels | shadow ${shadowRoots} | iframes ${frames} | ${hasText} | ${window === window.top ? "top" : "frame"}] ` + rel.concat(rest).slice(0, 12).map(([k, v]) => `${k}=${[].concat(v).join('|')}`).join("; ");
   return data;
 }
 
