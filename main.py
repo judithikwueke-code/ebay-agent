@@ -332,6 +332,19 @@ def main():
             misfire_grace_time=1800,
         )
 
+    # Hourly: top up any Amazon listing that has sold down, as far as Amazon has stock
+    def replenish_job():
+        from stock_monitor import replenish_amazon_stock
+        replenish_amazon_stock()
+    scheduler.add_job(
+        replenish_job,
+        IntervalTrigger(minutes=60),
+        id="replenish_stock",
+        name="Replenish eBay stock from Amazon availability",
+        replace_existing=True,
+        misfire_grace_time=1800,
+    )
+
     # Keep order records in step with eBay (cancelled / refunded / dispatched)
     def order_status_job():
         from order_status_sync import sync_order_status

@@ -143,7 +143,18 @@ def _set_ebay_quantity(sku: str, quantity: int) -> bool:
             },
         }
         resp = requests.put(url, headers=_sell_headers(), json=payload, timeout=15)
-        return resp.status_code in (200, 201, 204)
+        ok = resp.status_code in (200, 201, 204)
+        # eBay sells from the OFFER's available quantity, so keep that in step too
+        offers = requests.get(f"{EBAY_SELL_BASE}/offer", headers=_sell_headers(), params={"sku": sku}, timeout=15).json().get("offers", [])
+        if offers:
+            ok = True          # the offer update below also sets the item's quantity, so it decides the outcome
+        for o in offers:
+            r2 = requests.post(
+                f"{EBAY_SELL_BASE}/bulk_update_price_quantity", headers=_sell_headers(), timeout=20,
+                json={"requests": [{"sku": sku, "shipToLocationAvailability": {"quantity": quantity},
+                                    "offers": [{"offerId": o["offerId"], "availableQuantity": quantity}]}]})
+            ok = ok and r2.status_code in (200, 201, 204)
+        return ok
     except Exception as e:
         log.error(f"eBay quantity update failed for {sku}: {e}")
         return False
@@ -258,6 +269,63 @@ def run_amazon_monitor():
         close_amazon()
     if notes:
         _send_telegram("AMAZON STOCK/PRICE: " + " || ".join(notes))
+
+
+def replenish_amazon_stock():
+    """
+    Hourly: any live Amazon-sourced listing whose eBay stock is below STOCK_TARGET is topped back up,
+    as far as Amazon really has it (never above its 'only N left'), and never when Amazon is out of stock
+    or the price has moved so far that the margin is gone.
+    """
+    import hashlib
+    from amazon_source import check_amazon_listing, close as close_amazon
+    from supplier import _calc_margin
+    from config import VAT_RATE
+
+    target = int(os.getenv("STOCK_TARGET", "5"))
+    min_margin = float(os.getenv("AMAZON_MIN_MARGIN_PCT", "3"))
+    conn = sqlite3.connect(DB_PATH)
+    rows = conn.execute(
+        "SELECT id, supplier_product_id, title, listed_price_gbp FROM products "
+        "WHERE supplier='amazon' AND status='active' AND ebay_listing_id IS NOT NULL").fetchall()
+    conn.close()
+    low = []
+    for pid, asin, title, listed in rows:
+        sku = hashlib.md5(f"amazon-{asin}".encode()).hexdigest()[:20]
+        try:
+            offers = requests.get(f"{EBAY_SELL_BASE}/offer", headers=_sell_headers(), params={"sku": sku}, timeout=15).json().get("offers", [])
+        except Exception:
+            continue
+        qty = offers[0].get("availableQuantity") if offers else None
+        if qty is not None and qty < target:
+            low.append((pid, asin, title, listed, sku, qty))
+    if not low:
+        return
+    log.info(f"Replenish: {len(low)} listing(s) below {target}")
+    try:
+        for pid, asin, title, listed, sku, qty in low:
+            res = check_amazon_listing(asin)
+            if res.get("blocked"):
+                log.warning("Replenish stopped early - Amazon robot check")
+                break
+            if res["in_stock"] is None:
+                log.info(f"Replenish: {title[:40]} - could not read the Amazon page this time, left at {qty}")
+                continue
+            if not res["in_stock"]:
+                log.info(f"Replenish: {title[:40]} - Amazon out of stock, left at {qty}")
+                continue
+            if res["price"] is None or _calc_margin(res["price"] / (1 + VAT_RATE), 0.0, listed or 0) < min_margin:
+                log.info(f"Replenish: {title[:40]} - Amazon price {res['price']} leaves no margin, left at {qty}")
+                continue
+            n = min(target, res.get("max_qty") or target)
+            if n > qty:
+                if _set_ebay_quantity(sku, n):
+                    log.info(f"Replenish: {title[:40]} {qty} -> {n}")
+                else:
+                    log.warning(f"Replenish: {title[:40]} - eBay refused the quantity change")
+            time.sleep(random.uniform(2, 4))
+    finally:
+        close_amazon()
 
 
 def _update_status(product_id: int, status: str):

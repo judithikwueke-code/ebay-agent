@@ -236,7 +236,18 @@ def check_amazon_listing(asin: str) -> dict:
             avail = _avail_text(page)
             can_buy = page.locator("#add-to-cart-button, #buy-now-button").count() > 0
             in_stock = bool(can_buy and "unavailable" not in avail and price)
-            return {"found": True, "in_stock": in_stock, "price": price, "blocked": False}
+            max_qty = None
+            m = re.search(r"only\s+(\d+)\s+left", avail)
+            if m:
+                max_qty = int(m.group(1))
+            else:
+                try:
+                    opts = page.locator("select#quantity option").count()
+                    if opts:
+                        max_qty = opts
+                except Exception:
+                    pass
+            return {"found": True, "in_stock": in_stock, "price": price, "blocked": False, "max_qty": max_qty}
         except Exception as e:
             log.warning(f"Amazon check failed for {asin}: {e}")
             close()
