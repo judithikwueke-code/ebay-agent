@@ -27,7 +27,8 @@ MIN_PRICE, MAX_PRICE = 5.0, 80.0
 MIN_PROFIT = float(os.getenv("MIN_PROFIT_AT_P25", "2"))
 MIN_SOLD_PER_WEEK = float(os.getenv("DEAL_MIN_SOLD_PER_WEEK", "1"))
 BLOCK_WORDS = ("capsule", "tablet", "supplement", "vitamin", "knife", "battery pack", "thermometer",
-               "oximeter", "baby", "infant", "nappy", "e-cigarette", "vape")
+               "oximeter", "baby", "infant", "nappy", "e-cigarette", "vape", "cat food", "dog food", "pet food",
+               "wet food", "treats", "coat oil", "skin & coat", "milk powder", "cat litter", "flea")
 
 
 def _nice(x: float, up: bool) -> float:
