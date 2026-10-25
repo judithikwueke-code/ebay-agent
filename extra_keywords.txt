@@ -1,32 +1,32 @@
 # category_key|keyword  — Christmas (in season now) + evergreen fast movers
-home_living|christmas sack large
-home_living|christmas gift bags set
-home_living|christmas wrapping paper rolls
-home_living|christmas tree skirt
-home_living|christmas baubles shatterproof
-home_living|christmas tree decorations set
-home_living|christmas stocking set
-home_living|christmas table runner
-home_living|christmas wreath door
-home_living|christmas fairy lights battery
-home_living|christmas tree lights warm white
-home_living|christmas cushion covers
-home_living|christmas door mat
-home_living|christmas candle holder
-home_living|advent calendar wooden reusable
-home_living|christmas gift tags
-home_living|christmas napkins
-home_living|santa hat
-home_living|reindeer antlers headband
-home_living|christmas window stickers
-home_living|christmas tree topper
-home_living|christmas bunting
-home_living|christmas placemats set
-home_living|christmas card holder
-garden_outdoor|christmas lights outdoor solar
-garden_outdoor|christmas projector lights outdoor
-garden_outdoor|icicle lights outdoor
-garden_outdoor|light up reindeer outdoor
+seasonal|christmas sack large
+seasonal|christmas gift bags set
+seasonal|christmas wrapping paper rolls
+seasonal|christmas tree skirt
+seasonal|christmas baubles shatterproof
+seasonal|christmas tree decorations set
+seasonal|christmas stocking set
+seasonal|christmas table runner
+seasonal|christmas wreath door
+seasonal|christmas fairy lights battery
+seasonal|christmas tree lights warm white
+seasonal|christmas cushion covers
+seasonal|christmas door mat
+seasonal|christmas candle holder
+seasonal|advent calendar wooden reusable
+seasonal|christmas gift tags
+seasonal|christmas napkins
+seasonal|santa hat
+seasonal|reindeer antlers headband
+seasonal|christmas window stickers
+seasonal|christmas tree topper
+seasonal|christmas bunting
+seasonal|christmas placemats set
+seasonal|christmas card holder
+seasonal|christmas lights outdoor solar
+seasonal|christmas projector lights outdoor
+seasonal|icicle lights outdoor
+seasonal|light up reindeer outdoor
 pet_supplies|dog toys interactive
 pet_supplies|cat toys feather
 pet_supplies|dog poo bags
@@ -36,7 +36,7 @@ pet_supplies|pet grooming glove
 pet_supplies|dog chew toys durable
 pet_supplies|pet water fountain
 pet_supplies|dog travel bowl
-pet_supplies|christmas dog bandana
+seasonal|christmas dog bandana
 pet_supplies|dog lead
 home_living|bathroom storage organiser
 home_living|kitchen drawer organiser
@@ -112,3 +112,43 @@ office_stationery|a5 notebook hardback
 office_stationery|pencil case
 office_stationery|craft paper pack
 office_stationery|felt tip pens
+seasonal|stocking fillers
+seasonal|secret santa gifts
+seasonal|christmas crackers
+seasonal|christmas cards box
+seasonal|christmas tree artificial 6ft
+seasonal|christmas tree stand
+seasonal|snowflake decorations
+seasonal|christmas mug
+seasonal|christmas gift wrap ribbon
+seasonal|christmas tree lights multicolour
+seasonal|led candles flameless
+seasonal|nutcracker
+seasonal|gingerbread house kit
+seasonal|christmas napkin rings
+seasonal|christmas table decorations
+seasonal|christmas photo props
+seasonal|christmas garland
+seasonal|christmas bows
+seasonal|christmas tags and string
+seasonal|christmas hanging decorations
+seasonal|christmas tree ribbon
+seasonal|christmas lights battery operated
+seasonal|christmas lights mains
+seasonal|christmas wall stickers
+seasonal|christmas bauble hooks
+seasonal|christmas gift boxes
+seasonal|christmas paper plates
+seasonal|christmas cups and plates party
+seasonal|christmas fairy lights indoor
+seasonal|christmas star light
+seasonal|christmas projector indoor
+seasonal|advent calendar kids
+seasonal|christmas pet bandana
+seasonal|christmas dog toy
+seasonal|christmas wrapping set
+seasonal|christmas scented candle
+seasonal|christmas wax melts
+seasonal|christmas pillow cover
+seasonal|christmas blanket
+seasonal|christmas bedding

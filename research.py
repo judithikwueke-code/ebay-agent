@@ -474,6 +474,8 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
     except Exception as e:
         log.debug(f"No Terapeak seeds: {e}")
 
+    seed_keywords.setdefault("seasonal", [])
+
     # Extra keywords from a file (one per line: category_key|keyword) — lets a run be widened without code changes.
     extra_file = os.getenv("EXTRA_KEYWORDS_FILE")
     if extra_file and os.path.exists(extra_file):
@@ -520,7 +522,7 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
             avg_price = snap["avg_price_gbp"]
 
             # Hard cap: >300 sellers = race-to-bottom commodity, skip
-            if active > MAX_COMPETITORS_HARD:
+            if active > cat_info.get("max_competitors", MAX_COMPETITORS_HARD):
                 log.debug(f"Skip '{kw}': {active} active competitors (too saturated)")
                 continue
             if avg_price == 0:

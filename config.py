@@ -358,6 +358,10 @@ SUPPLIER_TRACKING_HOURS = 4
 # a single global £50-£600 band was silently hiding real competition data
 # for anything cheaper (see MIN_PRICE_GBP/MAX_PRICE_GBP fallback above).
 CATEGORIES = {
+    # In season (Christmas): ranked ahead of everything else, cheap items allowed, crowded markets allowed
+    "seasonal":           {"id": "", "weight": 3.0, "fee_key": "everything_else",
+                            "min_price": 2.5, "max_price": 80.0, "max_competitors": 30000,
+                            "leaf_id": "66861"},
     "terapeak":           {"id": "", "weight": 1.6, "fee_key": "everything_else",
                             "min_price": 3.0, "max_price": 150.0,
                             "leaf_id": "66861"},   # keywords from Terapeak sold data (no category filter)
@@ -383,7 +387,7 @@ CATEGORIES = {
     "health_devices":     {"id": "67588", "weight": 1.0, "fee_key": "health_beauty",
                             "min_price": 5.0,  "max_price": 150.0,
                             "leaf_id": "36449"},    # Massagers
-    "garden_outdoor":     {"id": "159912","weight": 1.0, "fee_key": "garden_patio",
+    "garden_outdoor":     {"id": "159912","weight": 0.4, "fee_key": "garden_patio",
                             "min_price": 15.0, "max_price": 400.0,
                             "leaf_id": "20509"},    # Garden Lighting Accessories
     "home_living":        {"id": "11700",  "weight": 1.1, "fee_key": "everything_else",
