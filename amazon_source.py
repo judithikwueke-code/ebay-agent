@@ -286,13 +286,17 @@ def get_product(asin: str) -> dict | None:
                 src = _hires(t.get_attribute("src") or "")
                 if src and "sprite" not in src and "play-icon" not in src and src not in images:
                     images.append(src)
-            # The page's own gallery data carries the full-size ("hiRes") image of every photo.
-            try:
-                hi = list(dict.fromkeys(re.findall(r'"hiRes":"(https:[^"]+?\.jpg)"', page.content())))
-                if len(hi) >= 2:
-                    images = hi[:8]
-            except Exception:
-                pass
+            # Photos of the SELECTED variant only (landing image + its own thumbnails), upgraded to full size by
+            # image id. Never take images from elsewhere in the page source: they belong to other sizes/colours.
+            def _img_id(u):
+                m = re.search(r"/images/I/([A-Za-z0-9+%-]+?)[._]", u or "")
+                return m.group(1) if m else None
+            ids = []
+            for u in images:
+                i = _img_id(u)
+                if i and i not in ids:
+                    ids.append(i)
+            images = [f"https://m.media-amazon.com/images/I/{i}._AC_SL1500_.jpg" for i in ids][:8]
             bullets = [b.inner_text().strip() for b in page.locator("#feature-bullets li").all()[:8]]
             aspects = {}
             try:

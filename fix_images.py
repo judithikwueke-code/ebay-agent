@@ -38,8 +38,8 @@ def main(dry_run: bool):
         for asin, title in rows:
             prod = amazon_source.get_product(asin)
             imgs = _good(prod["images"]) if prod else []
-            if len(imgs) < 2:
-                print(f"{asin}: only {len(imgs)} image(s) found on Amazon page - skipped ({title[:40]})")
+            if len(imgs) < 1:
+                print(f"{asin}: no images found on Amazon page - skipped ({title[:40]})")
                 continue
             sku = hashlib.md5(f"amazon-{asin}".encode()).hexdigest()[:20]
             url = f"{EBAY_SELL_BASE}/inventory_item/{sku}"
