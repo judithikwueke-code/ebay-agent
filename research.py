@@ -158,10 +158,6 @@ _POLICY_BLOCKED = {
     "baby bath", "bath seat", "bath tub", "bouncer", "baby swing", "baby walker", "infant", "baby monitor",
     "pulse oximeter", "oximeter", "blood pressure", "forehead thermometer", "flea", "spot on", "insecticide",
     "pesticide", "aerosol", "oven cleaner", "lighter fluid",
-    # Consumables with expiry dates we can't see before a buyer asks (pet food/oils, food, milk powder)
-    "dog food", "cat food", "pet food", "wet food", "dry food", "treats", "food stuff", "foodstuff",
-    "skin & coat", "skin and coat", "coat oil", "salmon oil", "fish oil", "milk powder", "protein powder",
-    "cat litter",
 }
 
 
