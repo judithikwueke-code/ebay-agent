@@ -101,6 +101,8 @@ def research_and_list(dry_run: bool = False):
         if listed >= DAILY_LISTING_CAP:
             break
 
+        if os.getenv("SEASONAL_ONLY", "0") == "1" and opp["category"] not in ("seasonal", "terapeak"):
+            continue   # in season: list Christmas (and your Terapeak picks) only
         is_furniture = opp["category"] in ("furniture", "mattress")
         fee_key = CATEGORIES.get(opp["category"], {}).get("fee_key", "everything_else")
         match = find_best_supplier(
