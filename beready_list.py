@@ -6,6 +6,7 @@ Usage:  python beready_list.py [--dry] [--cap N]
 Run under:  systemd-run --scope -p MemoryMax=1000M venv/bin/python beready_list.py --dry
 """
 import logging, os, sys
+os.environ["SEASONAL_ONLY"] = "0"   # campaign runs list outside the Christmas-only seasonal filter
 # Combos/kits allowed when promising (user OK 2026-11-03). Set EXCLUDE_COMBO=1 to restrict to single items.
 from dotenv import load_dotenv
 load_dotenv()

@@ -1,0 +1,54 @@
+{
+  "_note": "Hand-brainstormed 2026-11-03 for the UK 'Be Ready' campaign (single products, Amazon-UK sourceable). Merged by campaign_discover.py with Claude-brainstormed + eBay-mined keywords.",
+  "tools_hardware": [
+    "hand crank torch", "dynamo torch", "magnetic work light", "led headlamp", "manual can opener",
+    "heavy duty tin opener", "multi tool pliers", "paracord 550", "heavy duty duct tape", "cable ties assorted",
+    "battery tester", "carbon monoxide alarm", "smoke alarm 10 year", "fire extinguisher 1kg", "fire blanket kitchen",
+    "emergency whistle", "waterproof matches", "ferro rod fire starter", "candle lantern", "tea light candles bulk",
+    "glass candle holder", "hand crank usb charger", "car window hammer escape", "bin bags heavy duty",
+    "pocket knife folding", "tarp waterproof"
+  ],
+  "garden_outdoor": [
+    "camping lantern collapsible", "solar camping light", "hot water bottle", "hot water bottle cover",
+    "vacuum flask 1l", "stainless steel flask", "camping kettle", "camping cooking pot", "camping mess kit",
+    "folding wood burning stove", "portable water filter straw", "water bladder hydration", "insulated water bottle",
+    "dry bag waterproof", "waterproof poncho", "camping sleeping mat", "bivvy bag emergency", "thermal survival bag",
+    "flood barrier door", "sandbags empty", "outdoor solar light", "portable fire pit", "log basket", "folding bucket",
+    "portable camping toilet", "camping table folding", "waterproof rucksack"
+  ],
+  "home_living": [
+    "draught excluder door", "window insulation film", "thermal curtains", "electric blanket", "heated throw",
+    "fleece throw blanket", "thermal socks wool", "thermal gloves", "beanie hat thermal", "thermal underwear",
+    "wind up alarm clock", "battery led candles", "airtight food storage containers", "water jug large",
+    "bucket with lid", "cash box lockable", "small safe", "key safe", "uk road atlas", "coin organiser",
+    "letter box draught excluder", "thermal window blind", "door snake"
+  ],
+  "tech_accessories": [
+    "usb c cable braided", "usb c fast charger", "solar charger phone", "power bank 10000mah", "power bank 30000mah",
+    "car phone charger", "12v to usb adapter", "bluetooth speaker portable", "walkie talkie", "digital radio portable",
+    "aa batteries alkaline", "aaa batteries alkaline", "rechargeable led bulb emergency", "portable solar panel",
+    "usb rechargeable fan", "usb flash drive 64gb", "external hard drive 1tb", "sd card 128gb", "power inverter 12v",
+    "extension lead surge protected", "battery storage case", "smart plug", "mobile phone signal booster"
+  ],
+  "health_devices": [
+    "first aid kit travel", "first aid kit car", "infrared thermometer", "elastic bandage", "ffp2 face masks",
+    "safety goggles", "ear plugs", "emergency eye wash", "thermal blanket adult", "cooling heat pack reusable"
+  ],
+  "auto_parts": [
+    "jump starter portable", "tyre inflator portable", "car warning triangle", "hi vis vest", "car blanket",
+    "windscreen frost cover", "tow rope", "jump leads heavy duty", "snow chains", "car emergency torch"
+  ],
+  "sports_fitness": [
+    "thermal base layer", "hiking poles", "walking gaiters", "waterproof trousers", "neck warmer fleece"
+  ],
+  "office_stationery": [
+    "waterproof document bag", "passport holder rfid", "document folder expanding", "waterproof notebook",
+    "marker pens permanent"
+  ],
+  "pet_supplies": [
+    "pet food storage container", "dog coat waterproof", "pet travel water bottle", "cat carrier"
+  ],
+  "baby_kids": [
+    "travel bottle warmer", "nappy bags", "baby thermal blanket", "kids thermal clothing"
+  ]
+}

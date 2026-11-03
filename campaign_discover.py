@@ -18,6 +18,7 @@ import os
 import re
 import sys
 
+os.environ["SEASONAL_ONLY"] = "0"   # campaign runs list outside the Christmas-only seasonal filter
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -116,8 +117,17 @@ if __name__ == "__main__":
     cap = int(sys.argv[sys.argv.index("--cap") + 1]) if "--cap" in sys.argv else 40
     skip = sys.argv[sys.argv.index("--skip") + 1].split(",") if "--skip" in sys.argv else []
 
-    brain = brainstorm(theme)
-    log.info(f"Brainstormed {sum(len(v) for v in brain.values())} keywords")
+    try:
+        brain = brainstorm(theme)
+    except Exception as e:                     # e.g. Anthropic credits exhausted - carry on with the other sources
+        log.warning(f"Claude brainstorm failed ({str(e)[:100]}) - using hand-written + mined keywords only")
+        brain = {}
+    manual = {}
+    mf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "campaign_keywords_manual.json")
+    if os.path.exists(mf):
+        with open(mf, encoding="utf-8") as f:
+            manual = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
+    log.info(f"Brainstormed {sum(len(v) for v in brain.values())} (Claude) + {sum(len(v) for v in manual.values())} (manual) keywords")
     seeds = ["power cut essentials", "emergency preparedness", "prepper survival", "blackout winter",
              "camping essentials", "storm flood protection", "wind up", "solar powered", "thermal keep warm",
              "off grid cooking", "emergency lighting", "winter car breakdown", "cash storage safe",
@@ -125,8 +135,12 @@ if __name__ == "__main__":
     best = mine_ebay(seeds)
     log.info(f"Mined {len(best)} live listings; top sellers: " +
              "; ".join(f"{b['title'][:40]} ({b['sold']})" for b in best[:8]))
-    mined = distil(theme, best) if best else {}
-    kws = merge(brain, mined, skip=skip)
+    try:
+        mined = distil(theme, best) if best else {}
+    except Exception as e:
+        log.warning(f"Claude distil failed ({str(e)[:100]}) - skipping mined keywords")
+        mined = {}
+    kws = merge(manual, brain, mined, skip=skip)
     with open("campaign_keywords.json", "w", encoding="utf-8") as f:
         json.dump({"brainstorm": brain, "mined": mined, "top_sellers": best[:70]}, f, indent=1)
     log.info(f"Researching {sum(len(v) for v in kws.values())} unique keywords")

@@ -120,3 +120,12 @@ AliExpress blocks scraping. Workflow:
 - Server runs Python 3.12 (venv /var/www/ebay-agent/venv); supplier.py uses 3.12-only nested f-string quotes, so local `py_compile` fails on older Python - not a bug on the server.
 - .env files are gitignored; account 2 tokens/IDs live in server `/var/www/ebay-agent-2/.env` and local `.env.account2*`.
 - Telegram: bot MyEbay_Agent_bot, chat id in .env; messages are prefixed with ACCOUNT_LABEL.
+
+## Update 2026-11-03 (evening) — UK "Be Ready" campaign
+- Gov campaign launched 2026-10-22 (3 days' supplies: water, food, torch, wind-up/battery radio, power bank, blankets, cash, first aid, documents). Built to capitalise:
+  - `beready_list.py` (supplied single-item keywords + user-spotted winners: tactical LED flashlights, gas stove), `campaign_discover.py` (self-directed: Claude brainstorm + eBay best-seller mining + `campaign_keywords_manual.json` (137 hand-written keywords)), `campaign_preflight.py`, `run_campaign.sh` (preflight -> seed user-picked ASINs -> beready_list -> campaign_discover), `run_campaign_later.sh` (waits for quota reset).
+  - User-picked products: B0D798PJJ9 Ember Rock 22-in-1 survival kit (£45.69), B0746GHQ2N General Medi 92pc mini first aid kit (£6.78) via `seed_amazon.py`.
+  - Combos allowed if promising (user OK). `EXCLUDE_COMBO=1` env restricts to single items (supplier._is_combo_title).
+  - `research.find_opportunities(only_keywords=...)` and `main.research_and_list(opportunities=, cap=)` allow targeted runs.
+- **Gotchas found:** account 2 `.env` has `SEASONAL_ONLY=1` (lists only Christmas/terapeak categories) - campaign scripts set SEASONAL_ONLY=0. eBay Browse API daily quota (429) was exhausted on 2026-11-03 by research runs (resets 08:00 UTC; ~7 calls per keyword) - budget keyword counts. **Anthropic credit balance too low** (brainstorm + listing text need Claude) - top up at console.anthropic.com or listing fails.
+- Run scheduled on server for 2026-11-04 08:05 UTC (`run_campaign_later.sh`); preflight aborts + Telegram-alerts if credits/quota still down. Logs: /tmp/campaign_*.log, /tmp/beready_live2.log; flag /tmp/campaign_done.flag.
