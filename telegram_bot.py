@@ -34,18 +34,22 @@ def _send(msg: str, silent: bool = False):
     label = os.getenv("ACCOUNT_LABEL")
     if label:                                     # which account's agent is talking
         msg = f"[{label}] " + msg
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-            json={
-                "chat_id": CHAT_ID,
-                "text": msg,
-                "disable_notification": silent,
-            },
-            timeout=10,
-        )
-    except Exception as e:
-        log.warning(f"Telegram send failed: {e}")
+    import time
+    for attempt in range(1, 4):
+        try:
+            r = requests.post(
+                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                json={"chat_id": CHAT_ID, "text": msg, "disable_notification": silent},
+                timeout=15,
+            )
+            if r.ok:
+                return True
+            log.warning(f"Telegram send rejected (attempt {attempt}): {r.status_code} {r.text[:200]}")
+        except Exception as e:
+            log.warning(f"Telegram send failed (attempt {attempt}): {e}")
+        time.sleep(2 * attempt)
+    log.error("Telegram send gave up after 3 attempts: " + msg[:80].replace(chr(10), " "))
+    return False
 
 
 def _db():

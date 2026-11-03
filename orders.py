@@ -39,7 +39,7 @@ def _order_headers() -> dict:
 # Fetch new eBay orders
 # ---------------------------------------------------------------------------
 
-def _fetch_new_ebay_orders(since_minutes: int = 20) -> list[dict]:
+def _fetch_new_ebay_orders(since_minutes: int = 180) -> list[dict]:
     """Fetch orders created in the last `since_minutes` minutes."""
     since = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).strftime(
         "%Y-%m-%dT%H:%M:%S.000Z"
@@ -56,6 +56,27 @@ def _fetch_new_ebay_orders(since_minutes: int = 20) -> list[dict]:
     except Exception as e:
         log.error(f"Failed to fetch eBay orders: {e}")
         return []
+
+
+def _order_exists(ebay_order_id: str, product_id_hint: str = "") -> bool:
+    from db import get_conn
+    with get_conn() as conn:
+        return conn.execute("SELECT 1 FROM orders WHERE ebay_order_id=?", (ebay_order_id,)).fetchone() is not None
+
+
+_ALERTED_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "unknown_order_alerts.txt")
+
+
+def _already_alerted(order_id: str, listing_id: str) -> bool:
+    try:
+        return f"{order_id}:{listing_id}" in open(_ALERTED_FILE).read().split()
+    except OSError:
+        return False
+
+
+def _mark_alerted(order_id: str, listing_id: str):
+    with open(_ALERTED_FILE, "a") as f:
+        f.write(f"{order_id}:{listing_id}" + chr(10))
 
 
 def _parse_address(shipping_address: dict) -> dict:
@@ -139,9 +160,34 @@ def process_new_orders():
             sale_price = float(item.get("lineItemCost", {}).get("value", 0))   # total for the whole line
             quantity = max(int(item.get("quantity", 1) or 1), 1)
 
+            if _order_exists(ebay_order_id, product_id_hint=listing_id):
+                continue   # already processed (lookback window overlaps previous polls)
+
             product = get_product_by_listing(listing_id)
             if not product:
                 log.warning(f"Order {ebay_order_id}: listing {listing_id} not in DB — manual review needed")
+                if not _already_alerted(ebay_order_id, listing_id):
+                    try:
+                        from telegram_bot import _send
+                        a = buyer_address
+                        NL = chr(10)
+                        lines = [
+                            "ORDER FOR UNKNOWN LISTING (not created by the agent - handle manually)",
+                            "  " + str(item.get("title", ""))[:70],
+                            f"  QUANTITY: {quantity}",
+                            f"  Sale total: GBP {sale_price:.2f}",
+                            f"  eBay order: {ebay_order_id}",
+                            f"  eBay listing: {listing_id} (SKU {item.get('sku', '')})",
+                            "",
+                            "DELIVER TO:",
+                            "  " + a["name"], "  " + a["line1"], "  " + a["line2"],
+                            "  " + a["city"], "  " + a["postcode"],
+                            "  Phone: " + (a["phone"] or "not given"),
+                        ]
+                        if _send(NL.join(lines)):
+                            _mark_alerted(ebay_order_id, listing_id)
+                    except Exception as e:
+                        log.error(f"Unknown-listing alert failed: {e}")
                 continue
 
             supplier = product["supplier"]
