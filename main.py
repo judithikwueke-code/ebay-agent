@@ -92,6 +92,11 @@ def research_and_list(dry_run: bool = False, opportunities: list | None = None, 
     if _listing_paused:
         log.warning("Listing is paused — skipping research cycle")
         return
+    if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "PAUSE_LISTINGS")):
+        # Same flag lister.create_listing honours - skip the whole cycle so a paused account doesn't burn
+        # eBay/CJ/Claude quota researching items it will refuse to list.
+        log.warning("PAUSE_LISTINGS flag present — skipping research cycle (saves API quota)")
+        return
 
     log.info("=== Research cycle starting ===")
     list_cap = cap or DAILY_LISTING_CAP
