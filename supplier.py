@@ -553,13 +553,31 @@ def _search_amazon(keyword: str, max_price_gbp: float) -> list[dict]:
     expects ex-VAT supplier prices and adds VAT itself. Convert here so VAT is counted once:
     non-registered sellers end up with the real shelf price, registered ones with the net price.
     max_price_gbp is a shelf-price ceiling, so scale it the same way before filtering.
+
+    Stock gate: after finding candidates on the search results page, each ASIN is verified
+    on its own product page via check_amazon_listing(). Any OOS or page-not-found result
+    is dropped — we never list something Amazon cannot ship right now.
     """
-    from amazon_source import search_amazon
+    from amazon_source import search_amazon, check_amazon_listing
+    candidates = search_amazon(keyword, max_price_gbp * (1 + VAT_RATE))
     out = []
-    for c in search_amazon(keyword, max_price_gbp * (1 + VAT_RATE)):
+    for c in candidates:
+        asin = c.get("product_id", "")
+        if not asin:
+            continue
+        check = check_amazon_listing(asin)
+        if check.get("blocked"):
+            # Amazon bot-blocked — skip verification but still include (conservative fallback)
+            log.debug(f"Amazon bot check hit for {asin} — skipping stock verification")
+        elif not check.get("in_stock"):
+            log.info(f"Amazon stock gate: ASIN {asin} is OOS or not found — skipping '{c.get("title", "")[:50]}'")
+            continue
         c["cost_gbp"] = round(c["cost_gbp"] / (1 + VAT_RATE), 2)
         c["shipping_gbp"] = round(c["shipping_gbp"] / (1 + VAT_RATE), 2)
         out.append(c)
+        page_imgs = check.get("images") or []
+        if page_imgs:
+            c["images"] = page_imgs
     return out
 
 

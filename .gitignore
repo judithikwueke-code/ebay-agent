@@ -11,3 +11,5 @@ amazon_accounts.json
 auto_order_state.json
 amazon_profiles/
 order_debug/
+unknown_order_alerts.txt
+*.bak*

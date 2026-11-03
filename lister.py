@@ -116,13 +116,13 @@ def _strip_compat(text: str) -> str:
 def _vero_blocked(text: str) -> bool:
     """Return True if any VeRO brand keyword appears in the text."""
     lower = _strip_compat(text)
-    return any(brand in lower for brand in VERO_BRANDS)
+    return any(_re.search(r"\b" + _re.escape(brand) + r"\b", lower) for brand in VERO_BRANDS)
 
 
 def _first_vero_hit(text: str) -> str:
     lower = _strip_compat(text)
     for brand in VERO_BRANDS:
-        if brand in lower:
+        if _re.search(r"\b" + _re.escape(brand) + r"\b", lower):
             return brand
     return ""
 
