@@ -256,7 +256,7 @@ def _score(avg_price: float, active: int, weight: float) -> float:
     return (avg_price / math.sqrt(active)) * weight
 
 
-def find_opportunities(top_n: int = 20) -> list[dict]:
+def find_opportunities(top_n: int = 20, only_keywords: dict | None = None) -> list[dict]:
     """
     Main entry point. Returns top_n ranked product opportunities.
     Each item: {keyword, category, category_id, avg_price_gbp,
@@ -492,7 +492,7 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
     # Pull fresh trending keywords every cycle and merge with seeds
     try:
         from trend_research import get_fresh_keywords
-        fresh = get_fresh_keywords(max_total=40)
+        fresh = [] if only_keywords is not None else get_fresh_keywords(max_total=40)
         for item in fresh:
             cat = item.get("category", "home_appliances")
             if cat in seed_keywords:
@@ -502,6 +502,10 @@ def find_opportunities(top_n: int = 20) -> list[dict]:
         log.info(f"Injected {len(fresh)} fresh trending keywords from daily discovery")
     except Exception as e:
         log.warning(f"Trend research skipped: {e}")
+
+    if only_keywords is not None:
+        # Targeted run (e.g. a campaign): research ONLY these {category_key: [keywords]}
+        seed_keywords = {k: list(v) for k, v in only_keywords.items()}
 
     results = []
 

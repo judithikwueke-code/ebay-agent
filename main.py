@@ -87,18 +87,20 @@ def pause_listings():
     log.warning("Auto-listing PAUSED — resolve health issues then restart")
 
 
-def research_and_list(dry_run: bool = False):
+def research_and_list(dry_run: bool = False, opportunities: list | None = None, cap: int | None = None):
     global _listing_paused
     if _listing_paused:
         log.warning("Listing is paused — skipping research cycle")
         return
 
     log.info("=== Research cycle starting ===")
-    opportunities = find_opportunities(top_n=DAILY_LISTING_CAP * 5)
+    list_cap = cap or DAILY_LISTING_CAP
+    if opportunities is None:
+        opportunities = find_opportunities(top_n=DAILY_LISTING_CAP * 5)
 
     listed = 0
     for opp in opportunities:
-        if listed >= DAILY_LISTING_CAP:
+        if listed >= list_cap:
             break
 
         if os.getenv("SEASONAL_ONLY", "0") == "1" and opp["category"] not in ("seasonal", "terapeak"):
@@ -206,7 +208,7 @@ def research_and_list(dry_run: bool = False):
     skipped = len(opportunities) - listed
     log.info(f"=== Research cycle done — {listed} listing(s) created ===")
     try:
-        alert_research_done(listed, skipped, DAILY_LISTING_CAP)
+        alert_research_done(listed, skipped, list_cap)
     except Exception:
         pass
 

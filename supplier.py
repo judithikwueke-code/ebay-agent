@@ -7,6 +7,8 @@ Furniture is restricted to UK-warehouse suppliers only.
 """
 
 import logging
+import os
+import re
 import time
 import requests
 import wholesalebeds_catalog
@@ -547,6 +549,19 @@ def _min_viable_price(cost_gbp: float, shipping_gbp: float, fee_key: str) -> flo
 # Main matcher
 # ---------------------------------------------------------------------------
 
+_COMBO_RE = re.compile(
+    r"\d+\s*-?\s*in\s*-?\s*1|combo|bundle|multi[- ]?function(al)?|set of|kit"
+    r"|(and|&|\+)\s*(torch|flashlight|power ?bank|charger|radio|lantern|compass|whistle)"
+    r"|with\s+(a\s+)?(torch|flashlight|power ?bank|phone charger|solar panel|usb charger|compass)",
+    re.I)
+
+
+def _is_combo_title(title: str) -> bool:
+    """True for multi-purpose / kit / bundle listings (we only want single items)."""
+    t = re.sub(r"first[- ]aid kit|tool kit", "", title or "", flags=re.I)
+    return bool(_COMBO_RE.search(t))
+
+
 def _search_amazon(keyword: str, max_price_gbp: float) -> list[dict]:
     """
     Amazon shows VAT-inclusive retail prices, but the margin maths (total_cost_with_vat)
@@ -560,6 +575,11 @@ def _search_amazon(keyword: str, max_price_gbp: float) -> list[dict]:
     """
     from amazon_source import search_amazon, check_amazon_listing
     candidates = search_amazon(keyword, max_price_gbp * (1 + VAT_RATE))
+    if os.getenv("EXCLUDE_COMBO") == "1":
+        before = len(candidates)
+        candidates = [c for c in candidates if not _is_combo_title(c.get("title", ""))]
+        if len(candidates) < before:
+            log.info(f"Combo filter: dropped {before - len(candidates)} combo/kit/bundle result(s) for '{keyword}'")
     out = []
     for c in candidates:
         asin = c.get("product_id", "")
