@@ -19,10 +19,12 @@ velocity. If/when Marketplace Insights access is granted, re-add a
 sell-through filter on top of this.
 """
 
+import json
 import logging
 import math
 import os
 import sqlite3
+import time
 from datetime import datetime, timezone
 import requests
 from config import (
@@ -43,6 +45,71 @@ MAX_COMPETITORS_HARD = int(os.getenv("MAX_COMPETITORS_HARD", "300"))  # skip key
 _velocity_cache: dict = {}
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# API-quota protection (eBay Browse API = 5,000 calls/day shared by every agent on this app)
+#  - a 429 stops the cycle cleanly instead of failing keyword after keyword
+#  - QUOTA_RESERVE calls are always left for the Telegram bot / manual use
+#  - keyword results are cached RESEARCH_CACHE_HOURS so repeat cycles don't re-spend calls
+# ---------------------------------------------------------------------------
+QUOTA_RESERVE = int(os.getenv("QUOTA_RESERVE", "600"))
+RESEARCH_CACHE_HOURS = float(os.getenv("RESEARCH_CACHE_HOURS", "48"))
+_quota_hit = False
+_quota_memo = {"t": 0.0, "left": None}
+
+
+def _quota_left() -> int | None:
+    """Remaining Browse calls today per eBay's rate-limit API (None if unknown). Memoised for 60s."""
+    if time.time() - _quota_memo["t"] < 60:
+        return _quota_memo["left"]
+    left = None
+    try:
+        r = requests.get("https://api.ebay.com/developer/analytics/v1_beta/rate_limit/",
+                         headers={"Authorization": f"Bearer {get_app_token()}"},
+                         params={"api_context": "buy", "api_name": "Browse"}, timeout=15)
+        for res in r.json()["rateLimits"][0]["resources"]:
+            if res["name"] == "buy.browse":
+                left = int(res["rates"][0]["remaining"])
+    except Exception as e:
+        log.debug(f"quota check failed: {e}")
+    _quota_memo.update(t=time.time(), left=left)
+    return left
+
+
+def _cache_conn():
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("CREATE TABLE IF NOT EXISTS research_cache (keyword TEXT, category TEXT, fetched_at REAL, "
+                 "outcome TEXT, PRIMARY KEY (keyword, category))")
+    return conn
+
+
+def _cache_get(keyword: str, category: str):
+    if RESEARCH_CACHE_HOURS <= 0:
+        return None
+    try:
+        conn = _cache_conn()
+        row = conn.execute("SELECT fetched_at, outcome FROM research_cache WHERE keyword=? AND category=?",
+                           (keyword.lower(), category)).fetchone()
+        conn.close()
+        if row and time.time() - row[0] < RESEARCH_CACHE_HOURS * 3600:
+            return json.loads(row[1])
+    except Exception as e:
+        log.debug(f"cache read failed: {e}")
+    return None
+
+
+def _cache_put(keyword: str, category: str, outcome: dict):
+    if RESEARCH_CACHE_HOURS <= 0:
+        return
+    try:
+        conn = _cache_conn()
+        conn.execute("INSERT OR REPLACE INTO research_cache VALUES (?,?,?,?)",
+                     (keyword.lower(), category, time.time(), json.dumps(outcome)))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.debug(f"cache write failed: {e}")
+
 
 
 def _browse_headers() -> dict:
@@ -113,8 +180,11 @@ def _market_snapshot(keyword: str, category_id: str,
             avg_price = 0.0
         return {"active_listings": total, "avg_price_gbp": avg_price, "sample": items}
     except Exception as e:
+        global _quota_hit
+        if "429" in str(e):
+            _quota_hit = True
         log.warning(f"Market snapshot failed for '{keyword}': {e}")
-        return {"active_listings": 999, "avg_price_gbp": 0.0, "sample": []}
+        return {"active_listings": 999, "avg_price_gbp": 0.0, "sample": [], "failed": True}
 
 
 # eBay UK prohibited / restricted item terms.
@@ -221,6 +291,9 @@ def _sales_velocity(samples: list, keyword: str) -> float | None:
             r.raise_for_status()
             d = r.json()
         except Exception as e:
+            global _quota_hit
+            if "429" in str(e):
+                _quota_hit = True
             log.debug(f"getItem failed for {item_id}: {e}")
             continue
         avail = (d.get("estimatedAvailabilities") or [{}])[0]
@@ -507,9 +580,15 @@ def find_opportunities(top_n: int = 20, only_keywords: dict | None = None) -> li
         # Targeted run (e.g. a campaign): research ONLY these {category_key: [keywords]}
         seed_keywords = {k: list(v) for k, v in only_keywords.items()}
 
+    global _quota_hit
+    _quota_hit = False
+    stopped = None
+    api_keywords = 0
     results = []
 
     for cat_key, cat_info in CATEGORIES.items():
+        if stopped:
+            break
         cat_id = cat_info["id"]
         weight = cat_info["weight"]
         min_price = cat_info.get("min_price", MIN_PRICE_GBP)
@@ -521,83 +600,120 @@ def find_opportunities(top_n: int = 20, only_keywords: dict | None = None) -> li
             if kw in seen_kws:
                 continue
             seen_kws.add(kw)
-            snap = _market_snapshot(kw, cat_id, min_price, max_price)
-            active = snap["active_listings"]
-            avg_price = snap["avg_price_gbp"]
-
-            # Hard cap: >300 sellers = race-to-bottom commodity, skip
-            if active > cat_info.get("max_competitors", MAX_COMPETITORS_HARD):
-                log.debug(f"Skip '{kw}': {active} active competitors (too saturated)")
+            cached = _cache_get(kw, cat_key)
+            if cached is not None:
+                if not cached.get("skip"):
+                    results.append(cached["opp"])
                 continue
-            if avg_price == 0:
-                log.debug(f"Skip '{kw}': no active listings found in price band")
-                continue
+            if _quota_hit:
+                stopped = "eBay returned 429 (daily quota used up)"
+                break
+            if api_keywords % 15 == 0:
+                left = _quota_left()
+                if left is not None and left < QUOTA_RESERVE:
+                    stopped = f"only {left} eBay calls left today (reserve {QUOTA_RESERVE})"
+                    break
+            api_keywords += 1
+            _before, _cacheable = len(results), True
+            for _once in (0,):          # single pass: `continue` below means "done with this keyword"
+                snap = _market_snapshot(kw, cat_id, min_price, max_price)
+                if snap.get("failed"):
+                    _cacheable = False
+                active = snap["active_listings"]
+                avg_price = snap["avg_price_gbp"]
 
-            # Terapeak override: if we have real sold-price data from the extension,
-            # use it instead of the bestMatch active-listing proxy.
-            terapeak = _terapeak_lookup(kw)
-            if terapeak and terapeak["avg_sold_price"]:
-                log.info(
-                    f"Terapeak data for '{kw}': avg_sold=£{terapeak['avg_sold_price']} "
-                    f"({terapeak['sell_through_pct']}% sell-through, {terapeak['total_sold']} sold) "
-                    f"— overriding bestMatch estimate £{avg_price}"
-                )
-                avg_price = terapeak["avg_sold_price"]
-                # Low sell-through = slow-moving product, lower score
-                if terapeak["sell_through_pct"] and terapeak["sell_through_pct"] < 20:
-                    log.debug(f"  Low sell-through {terapeak['sell_through_pct']}% — deprioritising")
-                    avg_price *= 0.5  # halve effective price to reduce score
-
-            samples = snap["sample"]
-            sample_title = samples[0].get("title", kw) if samples else kw
-            sample_image = (
-                samples[0].get("image", {}).get("imageUrl", "") if samples else ""
-            )
-            # Real titles currently ranking — fed to Claude in lister.py to mine
-            # actual keyword variants/word order instead of guessing blind.
-            competitor_titles = [s.get("title", "") for s in samples[:8] if s.get("title")]
-            # What buyers would actually pay for the top listings (price + postage), cheapest first.
-            def _buyer_total(it):
-                so = (it.get("shippingOptions") or [{}])[0]
-                return float(it["price"]["value"]) + float((so.get("shippingCost") or {}).get("value") or 0)
-            competitor_prices = sorted(_buyer_total(s) for s in samples if s.get("price", {}).get("value"))
-
-            if _is_policy_blocked(kw):
-                log.warning(f"Skip '{kw}': matches eBay policy blocked term")
-                continue
-
-            if _is_vero(sample_title):
-                log.debug(f"Skip '{kw}': VeRO brand detected in '{sample_title}'")
-                continue
-
-            if _is_policy_blocked(sample_title):
-                log.warning(f"Skip '{kw}': top result '{sample_title[:60]}' matches policy blocked term")
-                continue
-
-            score = _score(avg_price, max(active, 1), weight)
-
-            sold_per_week = None
-            if DEMAND_MIN_SOLD_PER_WEEK > 0:
-                sold_per_week = _sales_velocity(samples, kw)
-                if sold_per_week is None or sold_per_week < DEMAND_MIN_SOLD_PER_WEEK:
-                    log.info(f"Skip '{kw}': sells ~{sold_per_week} units/week (< {DEMAND_MIN_SOLD_PER_WEEK})")
+                # Hard cap: >300 sellers = race-to-bottom commodity, skip
+                if active > cat_info.get("max_competitors", MAX_COMPETITORS_HARD):
+                    log.debug(f"Skip '{kw}': {active} active competitors (too saturated)")
                     continue
-                score *= 1 + math.log1p(sold_per_week)
+                if avg_price == 0:
+                    log.debug(f"Skip '{kw}': no active listings found in price band")
+                    continue
 
-            results.append({
-                "keyword": kw,
-                "category": cat_key,
-                "category_id": cat_id,
-                "avg_price_gbp": avg_price,
-                "active_listings": active,
-                "score": round(score, 4),
-                "sample_title": sample_title,
-                "sample_image_url": sample_image,
-                "competitor_titles": competitor_titles,
-                "competitor_prices": competitor_prices,
-                "sold_per_week": sold_per_week,
-            })
-            log.info(f"Opportunity: '{kw}' | price=£{avg_price} | competitors={active} | sold/wk={sold_per_week} | score={score:.3f}")
+                # Terapeak override: if we have real sold-price data from the extension,
+                # use it instead of the bestMatch active-listing proxy.
+                terapeak = _terapeak_lookup(kw)
+                if terapeak and terapeak["avg_sold_price"]:
+                    log.info(
+                        f"Terapeak data for '{kw}': avg_sold=£{terapeak['avg_sold_price']} "
+                        f"({terapeak['sell_through_pct']}% sell-through, {terapeak['total_sold']} sold) "
+                        f"— overriding bestMatch estimate £{avg_price}"
+                    )
+                    avg_price = terapeak["avg_sold_price"]
+                    # Low sell-through = slow-moving product, lower score
+                    if terapeak["sell_through_pct"] and terapeak["sell_through_pct"] < 20:
+                        log.debug(f"  Low sell-through {terapeak['sell_through_pct']}% — deprioritising")
+                        avg_price *= 0.5  # halve effective price to reduce score
+
+                samples = snap["sample"]
+                sample_title = samples[0].get("title", kw) if samples else kw
+                sample_image = (
+                    samples[0].get("image", {}).get("imageUrl", "") if samples else ""
+                )
+                # Real titles currently ranking — fed to Claude in lister.py to mine
+                # actual keyword variants/word order instead of guessing blind.
+                competitor_titles = [s.get("title", "") for s in samples[:8] if s.get("title")]
+                # What buyers would actually pay for the top listings (price + postage), cheapest first.
+                def _buyer_total(it):
+                    so = (it.get("shippingOptions") or [{}])[0]
+                    return float(it["price"]["value"]) + float((so.get("shippingCost") or {}).get("value") or 0)
+                competitor_prices = sorted(_buyer_total(s) for s in samples if s.get("price", {}).get("value"))
+
+                if _is_policy_blocked(kw):
+                    log.warning(f"Skip '{kw}': matches eBay policy blocked term")
+                    continue
+
+                if _is_vero(sample_title):
+                    log.debug(f"Skip '{kw}': VeRO brand detected in '{sample_title}'")
+                    continue
+
+                if _is_policy_blocked(sample_title):
+                    log.warning(f"Skip '{kw}': top result '{sample_title[:60]}' matches policy blocked term")
+                    continue
+
+                score = _score(avg_price, max(active, 1), weight)
+
+                sold_per_week = None
+                if DEMAND_MIN_SOLD_PER_WEEK > 0:
+                    sold_per_week = _sales_velocity(samples, kw)
+                    if sold_per_week is None:
+                        _cacheable = False
+                    if sold_per_week is None or sold_per_week < DEMAND_MIN_SOLD_PER_WEEK:
+                        log.info(f"Skip '{kw}': sells ~{sold_per_week} units/week (< {DEMAND_MIN_SOLD_PER_WEEK})")
+                        continue
+                    score *= 1 + math.log1p(sold_per_week)
+
+                results.append({
+                    "keyword": kw,
+                    "category": cat_key,
+                    "category_id": cat_id,
+                    "avg_price_gbp": avg_price,
+                    "active_listings": active,
+                    "score": round(score, 4),
+                    "sample_title": sample_title,
+                    "sample_image_url": sample_image,
+                    "competitor_titles": competitor_titles,
+                    "competitor_prices": competitor_prices,
+                    "sold_per_week": sold_per_week,
+                })
+                log.info(f"Opportunity: '{kw}' | price=£{avg_price} | competitors={active} | sold/wk={sold_per_week} | score={score:.3f}")
+
+            if len(results) > _before:
+                _cache_put(kw, cat_key, {"opp": results[-1]})
+            elif _cacheable and not _quota_hit:
+                _cache_put(kw, cat_key, {"skip": True})
+
+        if stopped:
+            break
+
+    if stopped:
+        log.warning(f"Research stopped early: {stopped}. Keywords checked with the API this cycle: {api_keywords}")
+        try:
+            from telegram_bot import _send
+            _send(f"Research stopped early: {stopped}. Checked {api_keywords} keywords, "
+                  f"{len(results)} opportunities so far.", silent=True)
+        except Exception:
+            pass
 
     results.sort(key=lambda x: x["score"], reverse=True)
     return results[:top_n]

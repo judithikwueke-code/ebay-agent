@@ -137,3 +137,8 @@ AliExpress blocks scraping. Workflow:
 - Tested 2026-11-03: vision + Amazon match OK on a real screenshot; price/list steps blocked by eBay 429 quota at the time - re-test after 08:00 UTC reset.
 - Logs: `journalctl -u telegram-listener`. Restart: `systemctl restart telegram-listener`.
 - 2026-11-03: main.research_and_list now returns early if PAUSE_LISTINGS flag exists (was only checked in lister.create_listing AFTER full research, wasting eBay/CJ/Claude calls on paused account 1). Deployed to account 1 (restarted); account 2 file updated, takes effect on next restart (no flag there).
+
+## API quota guard (2026-11-03) - research.py, account 2
+- eBay Browse API = 5,000 calls/day for the whole app (both agents), resets 08:00 UTC; check with Analytics getRateLimits (`/developer/analytics/v1_beta/rate_limit/?api_context=buy&api_name=Browse`). Daily cycles + extra runs had exhausted it (6,090 counted).
+- `find_opportunities` now: (1) `DEMAND_SAMPLE_ITEMS=3` (was 6 -> ~4 calls/keyword instead of 7); (2) caches each keyword's outcome 48h in table `research_cache` (`RESEARCH_CACHE_HOURS`; failed/429/unknown-velocity results are NOT cached); (3) stops the cycle cleanly on a 429 and Telegram-alerts; (4) stops when remaining quota < `QUOTA_RESERVE` (600; campaign scripts use 250) so the Telegram bot always has calls. Backups: research.py.bak-quota, .env.bak-quota.
+- Not yet done: ask eBay for a higher limit (developer portal Application Growth Check - needs the account owner).

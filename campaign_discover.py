@@ -18,6 +18,7 @@ import os
 import re
 import sys
 
+os.environ["QUOTA_RESERVE"] = "250"   # campaign may dip deeper than the agent default (600)
 os.environ["SEASONAL_ONLY"] = "0"   # campaign runs list outside the Christmas-only seasonal filter
 from dotenv import load_dotenv
 
