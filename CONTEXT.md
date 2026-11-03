@@ -129,3 +129,10 @@ AliExpress blocks scraping. Workflow:
   - `research.find_opportunities(only_keywords=...)` and `main.research_and_list(opportunities=, cap=)` allow targeted runs.
 - **Gotchas found:** account 2 `.env` has `SEASONAL_ONLY=1` (lists only Christmas/terapeak categories) - campaign scripts set SEASONAL_ONLY=0. eBay Browse API daily quota (429) was exhausted on 2026-11-03 by research runs (resets 08:00 UTC; ~7 calls per keyword) - budget keyword counts. **Anthropic credit balance too low** (brainstorm + listing text need Claude) - top up at console.anthropic.com or listing fails.
 - Run scheduled on server for 2026-11-04 08:05 UTC (`run_campaign_later.sh`); preflight aborts + Telegram-alerts if credits/quota still down. Logs: /tmp/campaign_*.log, /tmp/beready_live2.log; flag /tmp/campaign_done.flag.
+
+## Telegram screenshot -> source -> list (added 2026-11-03)
+- Service `telegram-listener` (systemd, account 2 dir, MemoryMax=200M) runs `telegram_listener.py`: long-polls the bot, obeys ONLY TELEGRAM_CHAT_ID. Send a product screenshot (optional caption) or an Amazon UK link/ASIN.
+- Heavy work runs in `sourcing_job.py` subprocesses under `systemd-run --scope -p MemoryMax=1000M` (one at a time): `find` (Claude vision -> Amazon UK search -> Claude picks exact match -> price preview), `plan` (known ASIN), `list` (create listing). Nothing lists until the user presses "List it" (inline button); "Skip" / alternative-product buttons supported; previews expire after 24h (telegram_pending.json).
+- `seed_amazon.py` refactored: `prepare()` (validate + price, lists nothing, raises SeedSkip) + `seed()` (prepare + create_listing). CLI unchanged. Backup on server: seed_amazon.py.bak-prepare.
+- Tested 2026-11-03: vision + Amazon match OK on a real screenshot; price/list steps blocked by eBay 429 quota at the time - re-test after 08:00 UTC reset.
+- Logs: `journalctl -u telegram-listener`. Restart: `systemctl restart telegram-listener`.

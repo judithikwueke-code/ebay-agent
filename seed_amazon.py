@@ -24,16 +24,20 @@ import amazon_source
 log = logging.getLogger("seed_amazon")
 
 
+class SeedSkip(Exception):
+    """Item cannot be listed (reason in the message)."""
+
+
 def _asin(text: str) -> str | None:
     m = re.search(r"(?:/dp/|/gp/product/|^)([A-Z0-9]{10})(?:[/?]|$)", text.strip())
     return m.group(1) if m else None
 
 
-def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = False, price: float | None = None) -> bool:
+def prepare(url_or_asin: str, keyword: str, category: str = "", price: float | None = None) -> dict:
+    """Validate an Amazon product and work out the eBay listing/price. Lists NOTHING. Raises SeedSkip."""
     asin = _asin(url_or_asin)
     if not asin:
-        log.error(f"No ASIN found in '{url_or_asin}'")
-        return False
+        raise SeedSkip(f"No ASIN found in '{url_or_asin}'")
     if category == "any":
         # No category filter for the eBay market search (item doesn't fit one of our research categories)
         cat_key, cat = "home_living", {**CATEGORIES["home_living"], "id": "", "min_price": 3.0, "max_price": 500.0}
@@ -44,22 +48,17 @@ def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = Fal
     fee_key = cat.get("fee_key", "everything_else")
 
     if is_product_already_listed("amazon", asin):
-        log.info(f"{asin}: already listed - skipping")
-        return False
+        raise SeedSkip(f"{asin}: already listed - skipping")
     if _is_policy_blocked(keyword):
-        log.warning(f"'{keyword}' matches an eBay restricted term - skipping")
-        return False
+        raise SeedSkip(f"'{keyword}' matches an eBay restricted term - skipping")
 
     prod = amazon_source.get_product(asin)
     if not prod or not prod["cost_gbp"]:
-        log.error(f"{asin}: could not read the Amazon page/price")
-        return False
+        raise SeedSkip(f"{asin}: could not read the Amazon page/price")
     if not prod["in_stock"]:
-        log.warning(f"{asin}: not in stock on Amazon - skipping")
-        return False
+        raise SeedSkip(f"{asin}: not in stock on Amazon - skipping")
     if _is_vero(prod["title"]) or _is_policy_blocked(prod["title"]):
-        log.warning(f"{asin}: brand/policy block on '{prod['title'][:60]}' - skipping")
-        return False
+        raise SeedSkip(f"{asin}: brand/policy block on '{prod['title'][:60]}' - skipping")
 
     if not (prod.get("aspects") or {}).get("Model"):
         m = re.search(r"\b([A-Z]{1,4}-?\d{2,5}[A-Z]?)\b", prod["title"])
@@ -74,8 +73,7 @@ def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = Fal
     snap = _market_snapshot(keyword, cat["id"], cat.get("min_price", 5.0), cat.get("max_price", 400.0))
     market = snap["avg_price_gbp"]
     if not market:
-        log.warning(f"'{keyword}': no eBay market data - skipping")
-        return False
+        raise SeedSkip(f"'{keyword}': no eBay market data - skipping")
 
     min_price = _min_viable_price(prod["cost_gbp"], prod["shipping_gbp"], fee_key)
     margin = _calc_margin(prod["cost_gbp"], prod["shipping_gbp"], market, fee_key)
@@ -86,8 +84,7 @@ def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = Fal
              f"floor £{min_price} | margin at market {margin}%")
     ceiling = MAX_PRICE_PREMIUM if PRICING_MODE == "cost_plus" else 1.25
     if not price and min_price > market * ceiling:
-        log.warning(f"{asin}: floor price £{min_price} is >{round((ceiling - 1) * 100)}% above market £{market} - not competitive, skipping")
-        return False
+        raise SeedSkip(f"{asin}: floor price £{min_price} is >{round((ceiling - 1) * 100)}% above market £{market} - not competitive, skipping")
 
     samples = snap["sample"]
     opp = {
@@ -106,6 +103,17 @@ def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = Fal
         target = max(min(target, cap), min_price)
     if price:
         target = price  # explicit price chosen by the user
+    return {"opp": opp, "prod": prod, "target": target, "shelf": shelf, "market": market, "fee_key": fee_key,
+            "asin": asin, "keyword": keyword, "category": cat_key, "active": snap["active_listings"]}
+
+
+def seed(url_or_asin: str, keyword: str, category: str = "", dry_run: bool = False, price: float | None = None) -> bool:
+    try:
+        plan = prepare(url_or_asin, keyword, category, price)
+    except SeedSkip as e:
+        log.warning(str(e))
+        return False
+    asin, opp, prod, target = plan["asin"], plan["opp"], plan["prod"], plan["target"]
     listing_id = create_listing(opp, prod, dry_run=dry_run, target_sell_price_gbp=target)
     log.info(f"{asin}: {'would list' if dry_run else 'listed'} -> {listing_id}")
     return bool(listing_id)
