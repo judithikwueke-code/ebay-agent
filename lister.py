@@ -624,6 +624,10 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     )
     title = content["title"]
     description = content["description"]
+    # eBay rejects listings that reference MHRA approval/registration (implied regulator endorsement)
+    import re as _re_mhra
+    title = _re_mhra.sub(r"\s*MHRA[\w\s-]{0,20}", " ", title).strip()
+    description = _re_mhra.sub(r"[^.<>]*(?:MHRA|Medicines and Healthcare products Regulatory Agency)[^.<>]*\.?", "", description)
 
     # VeRO check 2: Claude-generated title (catches brand mentions introduced by LLM)
     if _vero_blocked(title):
