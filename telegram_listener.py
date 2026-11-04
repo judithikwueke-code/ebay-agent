@@ -144,6 +144,13 @@ def show_result(res: dict):
              f"  List at: £{p['ebay_price']:.2f}  |  est. profit £{p['est_profit']:.2f}",
              f"  Market avg £{p['market']} | {p['competitors']} competitors",
              f"  Search term: {p['keyword']} | category: {p['category']}"]
+    if p["market"] and p["ebay_price"] > p["market"] * 1.10:
+        over = (p["ebay_price"] / p["market"] - 1) * 100
+        lines.insert(lines.index("EBAY PLAN") + 1,
+                     f"  WARNING: our price is {over:.0f}% ABOVE the market average (£{p['market']}) - "
+                     "it probably will not sell. Skip unless you have a reason.")
+    if p["est_profit"] < 2:
+        lines.append(f"  WARNING: estimated profit only £{p['est_profit']:.2f}")
     btns = [[{"text": f"List it at £{p['ebay_price']:.2f}", "callback_data": f"ok:{key}"},
              {"text": "Skip", "callback_data": f"no:{key}"}]]
     for a in (res.get("alternatives") or [])[:3]:
