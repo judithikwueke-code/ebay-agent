@@ -153,3 +153,8 @@ AliExpress blocks scraping. Workflow:
 - Bot accepts: screenshots; ANY link (Amazon incl. amzn.to/a.co/amzn.eu short links - redirects are followed; eBay /itm/ links via Browse API; other shops via page title/OG meta, browser fallback); several links per message (up to 6, processed one at a time); plain-text descriptions; bare ASINs. New sourcing_job.py modes `link` and `text`; `find` now shares `source_from_spec()`.
 - Sites that block scraping (e.g. AliExpress) reply "Couldn't read that page - send a screenshot instead". Unknown which links the user first sent that failed (likely app short links or non-Amazon shops).
 - Telegram bot token is now redacted from listener error logs (it was printed in a poll-error URL). Backups: *.bak-links on server.
+
+## Own-store listings (2026-11-05) - list_own.py
+- `list_own.py <product-url> <category_key> "<ebay keyword>" [--price N] [--title "exact title"] [--dry-run]` lists the user's OWN products (e.g. fabdealz.co.uk, schema.org Product JSON-LD) at the page price: no sourcing, margin gate or £12 minimum (lister honours `supplier_match["own_stock"]`; `title_override` forces an exact title). Supplier recorded as `fabdealz`; stock monitors ignore it; orders alert "manual fulfilment required". Cost stored as 0 (profit in order alerts is overstated). Quantity = DEFAULT_LISTING_QUANTITY (5). Promoted 2% automatically.
+- Listed: 366787454518 Silicone Kitchen Faucet Absorbent Mat... £8.99 (user-specified title); 366787455299 Cat Dental Treats Toy Bundle (Dentalife pouches + sisal sticks) £14.99.
+- fabdealz.co.uk is a Next.js/Medusa store (no Shopify .json); product data is in JSON-LD on the page.

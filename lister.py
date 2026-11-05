@@ -595,7 +595,7 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     min_sell_price = _calculate_sell_price(cost, shipping, target_margin=MIN_NET_MARGIN_PCT / 100, fee_key=fee_key)
 
     if target_sell_price_gbp is not None:
-        if target_sell_price_gbp < min_sell_price:
+        if target_sell_price_gbp < min_sell_price and not supplier_match.get("own_stock"):
             log.warning(
                 f"Requested price £{target_sell_price_gbp} is below the "
                 f"{MIN_NET_MARGIN_PCT}% margin floor (£{min_sell_price}) — rejecting, not listing at a loss"
@@ -607,7 +607,7 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
 
     # New accounts: don't list below £12 — low-price items attract SNAD cases
     # that hit defect rate hard before any feedback is built up.
-    if sell_price < MIN_LISTING_PRICE_GBP and not is_furniture:
+    if sell_price < MIN_LISTING_PRICE_GBP and not is_furniture and not supplier_match.get("own_stock"):
         log.info(f"Sell price £{sell_price} below £{MIN_LISTING_PRICE_GBP} minimum — skipping '{keyword}'")
         return None
 
@@ -628,6 +628,8 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     import re as _re_mhra
     title = _re_mhra.sub(r"\s*MHRA[\w\s-]{0,20}", " ", title).strip()
     description = _re_mhra.sub(r"[^.<>]*(?:MHRA|Medicines and Healthcare products Regulatory Agency)[^.<>]*\.?", "", description)
+    if supplier_match.get("title_override"):          # user-specified exact title (own-stock listings)
+        title = supplier_match["title_override"][:80]
 
     # VeRO check 2: Claude-generated title (catches brand mentions introduced by LLM)
     if _vero_blocked(title):
