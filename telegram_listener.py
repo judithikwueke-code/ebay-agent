@@ -40,7 +40,7 @@ def tg(method: str, **payload):
         r = requests.post(f"{API}/{method}", json=payload, timeout=40)
         return r.json()
     except Exception as e:
-        log.warning(f"telegram {method} failed: {e}")
+        log.warning(f"telegram {method} failed: {str(e).replace(TOKEN or '-', '***')[:160]}")
         return {}
 
 
@@ -177,16 +177,29 @@ def handle_photo(msg):
 def handle_text(msg):
     text = msg.get("text", "").strip()
     if text.startswith(("/start", "/help")):
-        say("Send me a screenshot of a product (or an Amazon UK link) and I'll find it on Amazon, price it for eBay "
-            "and ask you to confirm before listing.\nOptional caption on the screenshot, e.g. 'cat=garden_outdoor' "
-            "or 'must be the 2-pack'.")
+        say("Send me a product SCREENSHOT, a LINK from any shop (Amazon, eBay, AliExpress, Argos, Temu, "
+            "a brand site... several links are fine), or just describe the product in words. I'll find the exact "
+            "item on Amazon UK, price it for eBay and ask you to confirm before listing.\n"
+            "Optional note after the link / as a screenshot caption, e.g. 'must be the 2-pack'.")
         return
-    m = re.search(r"(?:/dp/|/gp/product/)([A-Z0-9]{10})|\b(B0[A-Z0-9]{8})\b", text)
+    url_re = r"https?://[^\s<>\"']+"
+    urls = re.findall(url_re, text)
+    if urls:
+        note = re.sub(url_re, "", text).strip()
+        for i, url in enumerate(urls[:6], 1):
+            tag = f" ({i}/{len(urls)})" if len(urls) > 1 else ""
+            say(f"Reading link{tag}: {url[:70]} ...")
+            show_result(run_job(["link", url.rstrip(").,"), note]))
+        return
+    m = re.search(r"\b(B0[A-Z0-9]{8})\b", text)
     if m:
         say("Checking that Amazon product and the eBay market...")
-        show_result(run_job(["plan", m.group(1) or m.group(2), text]))
+        show_result(run_job(["plan", m.group(1), text]))
+    elif len(text) >= 4:
+        say("Searching Amazon UK for that description...")
+        show_result(run_job(["text", text]))
     else:
-        say("Send a screenshot of the product, or an Amazon UK link / ASIN.")
+        say("Send a screenshot, a product link or a description of the product.")
 
 
 def handle_callback(cb):
@@ -249,7 +262,7 @@ def main():
                 offset = upd["update_id"] + 1
                 threading.Thread(target=dispatch, args=(upd,), daemon=True).start()
         except Exception as e:
-            log.warning(f"poll error: {e}")
+            log.warning(f"poll error: {str(e).replace(TOKEN or '-', '***')[:160]}")
             time.sleep(5)
 
 

@@ -148,3 +148,8 @@ AliExpress blocks scraping. Workflow:
 - 20 listings created: survival kit B0D798PJJ9 (366784594061, £61.69 - ABOVE market £44.45, floor-priced, unlikely to sell), mini first aid kit B0746GHQ2N (366784943884, £13.99), 6 from beready_list (wind-up/solar radios, power bank, torches, jerry can, camping stove, head torch), 12 from campaign_discover (377 keywords researched; hand crank charger, fire blanket, bivvy bag, sleeping mat, candles, cash box, thermometer, etc.).
 - Flagged for review: inflatable "fire extinguisher" novelty prop (366784766999), pop-up gazebo £75.49 (bulky, off-theme), flat pry bar, survival kit price. No supplier / uncompetitive: tactical LED flashlights, led torch high power, portable gas stove (priced variant listed instead), money belt.
 - eBay rejected the first-aid kit with "references MHRA approval"; `lister.create_listing` now scrubs MHRA/regulator references from title+description (backup lister.py.bak-mhra).
+
+## Telegram bot: links from any source (2026-11-05)
+- Bot accepts: screenshots; ANY link (Amazon incl. amzn.to/a.co/amzn.eu short links - redirects are followed; eBay /itm/ links via Browse API; other shops via page title/OG meta, browser fallback); several links per message (up to 6, processed one at a time); plain-text descriptions; bare ASINs. New sourcing_job.py modes `link` and `text`; `find` now shares `source_from_spec()`.
+- Sites that block scraping (e.g. AliExpress) reply "Couldn't read that page - send a screenshot instead". Unknown which links the user first sent that failed (likely app short links or non-Amazon shops).
+- Telegram bot token is now redacted from listener error logs (it was printed in a poll-error URL). Backups: *.bak-links on server.
