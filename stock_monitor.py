@@ -257,9 +257,9 @@ def run_amazon_monitor():
                 new_status = "paused_oos" if not res["in_stock"] else "paused_price"
                 if _set_ebay_quantity(sku, 0):
                     _update_status(pid, new_status)
-                    notes.append(f"Paused on eBay - {reason}: {title[:50]} | https://www.amazon.co.uk/dp/{asin}")
+                    notes.append(f"Paused on eBay - {reason}: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
                 else:
-                    notes.append(f"{reason} but eBay pause FAILED: {title[:50]} | https://www.amazon.co.uk/dp/{asin}")
+                    notes.append(f"{reason} but eBay pause FAILED: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
             elif status != "active" and viable:
                 if _set_ebay_quantity(sku, DEFAULT_LISTING_QUANTITY):
                     _update_status(pid, "active")

@@ -20,7 +20,7 @@ from config import CATEGORIES, calculate_ebay_fees, total_cost_with_vat
 
 def _source_link(supplier: str, product_id: str) -> str:
     if supplier == "amazon":
-        return f"https://www.amazon.co.uk/dp/{product_id}"
+        return f"https://www.amazon.co.uk/dp/{product_id}?th=1&psc=1"
     if supplier == "sportsdirect":
         return f"https://www.sportsdirect.com/{product_id}"
     return ""

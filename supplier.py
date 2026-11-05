@@ -750,7 +750,7 @@ def _place_amazon_order(asin: str, addr: dict, quantity: int = 1) -> dict | None
     order_ref = f"AMZ-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{asin}"
     body = (
         "New eBay sale - buy this on Amazon UK and ship to the customer.\n\n"
-        f"https://www.amazon.co.uk/dp/{asin}\n"
+        f"https://www.amazon.co.uk/dp/{asin}?th=1&psc=1\n"
         f"QUANTITY TO BUY: {quantity}\n"
         f"Internal reference: {order_ref}\n\n"
         "Deliver to:\n"

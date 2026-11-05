@@ -220,7 +220,7 @@ def check_amazon_listing(asin: str) -> dict:
         page = None
         try:
             page = _get_context().new_page()
-            if not _goto(page, f"https://www.amazon.co.uk/dp/{asin}"):
+            if not _goto(page, f"https://www.amazon.co.uk/dp/{asin}?th=1&psc=1"):
                 return {"found": False, "in_stock": None, "price": None, "blocked": True}
             time.sleep(random.uniform(1.0, 2.0))
             if page.locator("#productTitle").count() == 0:
@@ -271,7 +271,7 @@ def get_product(asin: str) -> dict | None:
         page = None
         try:
             page = _get_context().new_page()
-            if not _goto(page, f"https://www.amazon.co.uk/dp/{asin}"):
+            if not _goto(page, f"https://www.amazon.co.uk/dp/{asin}?th=1&psc=1"):
                 return None
             time.sleep(random.uniform(1.0, 2.0))
             if page.locator("#productTitle").count() == 0:

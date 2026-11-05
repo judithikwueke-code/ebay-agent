@@ -170,7 +170,7 @@ def _telegram_alternatives(it: dict, alts: list[dict], why: str):
              f"  {it.get('url', '')}", f"  ({why})", "", "CLOSEST SIMILAR PRODUCTS (similar, NOT identical):"]
     for i, a in enumerate(alts, 1):
         lines += [f"{i}) {a['title']}", f"   Amazon GBP {a['amazon_price']:.2f} -> list at GBP {a['list_at']:.2f} (profit GBP {a['profit']:.2f}) | similarity {a['similarity']} | {a['rating']} stars, {a['reviews']} reviews",
-                  f"   https://www.amazon.co.uk/dp/{a['asin']}"]
+                  f"   https://www.amazon.co.uk/dp/{a['asin']}?th=1&psc=1"]
         if a["child_safety"]:
             lines.append("   NOTE: child product - check UK safety marking before listing")
     lines += ["", "To list one, tell Claude: list <ASIN> at <price> (it will use Amazon's own photos and title, not the eBay seller's)."]

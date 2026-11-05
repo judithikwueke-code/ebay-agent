@@ -138,7 +138,7 @@ def show_result(res: dict):
     lines = [head, "",
              f"MATCH on Amazon UK" + (f" ({conf} confidence: {res.get('reason', '')})" if conf else ""),
              f"  {p['title'][:110]}",
-             f"  https://www.amazon.co.uk/dp/{p['asin']}",
+             f"  https://www.amazon.co.uk/dp/{p['asin']}?th=1&psc=1",
              f"  Amazon price: £{p['amazon_shelf']:.2f} (cost incl. VAT £{p['cost_total']:.2f})", "",
              "EBAY PLAN",
              f"  List at: £{p['ebay_price']:.2f}  |  est. profit £{p['est_profit']:.2f}",

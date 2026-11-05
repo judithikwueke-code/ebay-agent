@@ -182,7 +182,7 @@ def _login(page, acc: dict):
 
 
 def _product_ok(page, asin: str, max_total: float, quantity: int = 1) -> float:
-    page.goto(f"https://www.amazon.co.uk/dp/{asin}", wait_until="domcontentloaded", timeout=45000)
+    page.goto(f"https://www.amazon.co.uk/dp/{asin}?th=1&psc=1", wait_until="domcontentloaded", timeout=45000)
     _check_challenge(page)
     if page.locator("span#productTitle").count() == 0:
         raise RuntimeError("product page not found")
