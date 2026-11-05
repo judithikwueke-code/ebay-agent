@@ -9,7 +9,8 @@ works out for itself what people will buy, instead of relying on a supplied keyw
   3. RESEARCH    - the normal research gates (sold/week, competition, price band) via find_opportunities().
   4. LIST        - the normal listing pipeline (Amazon match, stock gate, competitive pricing, promotion).
 
-Usage:  python campaign_discover.py "<theme>" [--dry] [--cap N] [--skip kw1,kw2]
+Usage:  python campaign_discover.py "<theme>" [--dry] [--cap N] [--skip kw1,kw2] [--seeds "q1,q2"] [--manual file.json]
+The brainstorm is also told what has already SOLD for us (orders table) so it finds siblings of winners.
 Run under: systemd-run --scope -p MemoryMax=1000M venv/bin/python campaign_discover.py ...
 """
 import json
@@ -20,6 +21,7 @@ import sys
 
 os.environ["QUOTA_RESERVE"] = "250"   # campaign may dip deeper than the agent default (600)
 os.environ["SEASONAL_ONLY"] = "0"   # campaign runs list outside the Christmas-only seasonal filter
+os.environ.setdefault("DAILY_LISTING_CAP", "150")   # set before config loads .env (which never overrides)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -40,20 +42,54 @@ def _claude_json(prompt: str, max_tokens: int = 4000):
     return json.loads(m.group(0)) if m else {}
 
 
+def winners_context(limit: int = 12) -> str:
+    """Titles of products that have actually sold (last 90 days) - the strongest signal of what works for us."""
+    try:
+        import sqlite3
+        from db import DB_PATH
+        conn = sqlite3.connect(DB_PATH)
+        rows = conn.execute("""SELECT p.title, p.category, o.sale_price_gbp, o.profit_gbp FROM orders o
+                               JOIN products p ON p.id = o.product_id
+                               WHERE o.status != 'cancelled' AND o.created_at >= date('now','-90 day')
+                               ORDER BY o.id DESC LIMIT ?""", (limit,)).fetchall()
+        conn.close()
+        return "\n".join(f"- {t[:70]} [{c}] sold GBP {sp:.2f}, profit GBP {pf:.2f}" for t, c, sp, pf in rows)
+    except Exception as e:
+        log.debug(f"winners_context failed: {e}")
+        return ""
+
+
+def seed_queries(theme: str) -> list:
+    """eBay search phrases to mine best-sellers for this theme."""
+    try:
+        d = _claude_json(f"""Theme: {theme}
+Give 14 short eBay UK search phrases (2-4 words each) a shopper would use for this theme, covering different
+product areas. Return ONLY JSON: {{"queries": ["...", ...]}}""", 600)
+        q = [x for x in d.get("queries", []) if isinstance(x, str)]
+        if q:
+            return q[:16]
+    except Exception as e:
+        log.warning(f"seed_queries failed ({str(e)[:80]})")
+    return [w for w in re.split(r"[,:;()]", theme) if len(w.strip()) > 3][:8]
+
+
 def brainstorm(theme: str) -> dict:
+    win = winners_context()
     prompt = f"""You are a UK eBay dropshipping strategist. Theme driving shopper demand RIGHT NOW: {theme}
 
-List 120-160 distinct SINGLE products (not kits/bundles) that UK shoppers will search eBay for because of this
-theme. Think widely and creatively, not just the obvious checklist: direct needs, adjacent needs, second-order
-effects (cold homes, no power/cooking/heating/comms, cash/payments, water, food prep without power, safety,
-car/travel resilience, home security, flood/storm, medical, pets, babies, elderly), seasonal tie-ins (it is
-November, winter coming), and items people overlook (manual tin openers, thermos flasks, hot water bottles,
-draught excluders, candles+holders, matches, battery storage, USB-C cables, whistles, dry bags, etc).
+Products that have ALREADY SOLD for this seller recently (find siblings/variants of the winning TYPES):
+{win or '(none yet)'}
+
+List 120-170 distinct products that UK shoppers will search eBay for because of this theme. Think widely and
+creatively, not just the obvious: direct needs, adjacent needs, second-order effects, gifting angles, seasonal
+tie-ins (it is early November in the UK, Christmas and winter ahead), and items people overlook. Include
+ready-made KITS and BUNDLES where a kit is what people actually buy (e.g. survival / emergency / car kits sold
+well at GBP 60), as well as single items.
 Rules: each keyword is a 2-5 word eBay search phrase for ONE product type that Amazon UK sells for roughly
-GBP 4-80. NO food, drink, medicine, gas canisters, loose lithium batteries, weapons, or branded products.
-Assign each to one category key from: {CATS}.
+GBP 4-90. NO food, drink, medicine, gas canisters, loose lithium batteries, weapons, knives, or branded
+products. Assign each to one category key from: {CATS}.
 Return ONLY JSON: {{"category_key": ["keyword", ...], ...}}"""
-    return _claude_json(prompt, 6000)
+    return _claude_json(prompt, 6500)
 
 
 def mine_ebay(seeds: list, per_seed: int = 12) -> list:
@@ -124,15 +160,14 @@ if __name__ == "__main__":
         log.warning(f"Claude brainstorm failed ({str(e)[:100]}) - using hand-written + mined keywords only")
         brain = {}
     manual = {}
-    mf = os.path.join(os.path.dirname(os.path.abspath(__file__)), "campaign_keywords_manual.json")
-    if os.path.exists(mf):
-        with open(mf, encoding="utf-8") as f:
-            manual = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
+    if "--manual" in sys.argv:
+        mf = sys.argv[sys.argv.index("--manual") + 1]
+        if os.path.exists(mf):
+            with open(mf, encoding="utf-8") as f:
+                manual = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
     log.info(f"Brainstormed {sum(len(v) for v in brain.values())} (Claude) + {sum(len(v) for v in manual.values())} (manual) keywords")
-    seeds = ["power cut essentials", "emergency preparedness", "prepper survival", "blackout winter",
-             "camping essentials", "storm flood protection", "wind up", "solar powered", "thermal keep warm",
-             "off grid cooking", "emergency lighting", "winter car breakdown", "cash storage safe",
-             "water storage", "home safety fire"]
+    seeds = sys.argv[sys.argv.index("--seeds") + 1].split(",") if "--seeds" in sys.argv else seed_queries(theme)
+    log.info(f"Mining eBay with seeds: {seeds}")
     best = mine_ebay(seeds)
     log.info(f"Mined {len(best)} live listings; top sellers: " +
              "; ".join(f"{b['title'][:40]} ({b['sold']})" for b in best[:8]))

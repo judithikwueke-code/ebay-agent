@@ -1,0 +1,14 @@
+# One theme per line (rotated by run_growth.sh). Phrase each as the shopper demand driver, in plain English.
+# Lines starting with # are ignored. Add themes freely - the discovery engine does the rest.
+UK Christmas 2026 gifting: stocking fillers, Secret Santa under 15 pounds, gifts for him, her, kids, pets, cosy winter gifts
+UK cold snap and high energy bills: keeping a home warm cheaply, draught proofing, thermal clothing, heated products, insulation
+Survival, emergency, car breakdown and travel kits and gadgets (premium ready-made kits sold well at 60 pounds)
+Home organisation and kitchen gadgets bestsellers: storage, cleaning, small appliances, space saving
+Torches, head torches, lanterns and lighting for power cuts, camping and DIY
+Black Friday and Cyber Monday UK 2026 impulse buys and tech accessories under 30 pounds
+Winter car care and driving in snow, ice and dark mornings: UK motorists
+Dog and cat owners in winter: coats, beds, grooming, toys, treat dispensers, travel accessories
+Kids' winter and Christmas: stocking fillers, arts and crafts, stay-indoors activities, advent calendars (non-food)
+Fitness at home New Year 2027 resolutions: home gym, yoga, recovery, activity tracking
+Home security and safety: smoke and CO alarms, door and window security, key safes, lighting, cameras
+Cosy home decor and Christmas decorations, fairy lights, candles holders, artificial trees and wreaths
