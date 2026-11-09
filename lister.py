@@ -132,6 +132,25 @@ def _first_vero_hit(text: str) -> str:
 # Content generation
 # ---------------------------------------------------------------------------
 
+_PUNCT = {"‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "−": "-", "‘": "'", "’": "'",
+          "“": '"', "”": '"', " ": " ", " ": " ", " ": " ", "•": "-", "×": "x"}
+
+
+def clean_text(text: str) -> str:
+    """Replace look-alike Unicode punctuation (non-breaking hyphens, smart quotes...) that LLMs emit and eBay search can't match."""
+    for bad, good in _PUNCT.items():
+        text = text.replace(bad, good)
+    return text
+
+
+def clean_title(title: str) -> str:
+    """Plain-ASCII punctuation, collapsed spaces, first letter capitalised, hard limit 80 chars cut at a word boundary."""
+    t = " ".join(clean_text(title).split())
+    if len(t) > 80:
+        t = t[:80].rsplit(" ", 1)[0]
+    return t[:1].upper() + t[1:]
+
+
 def _generate_listing_content(keyword: str, supplier_title: str, description: str, category: str,
                                competitor_titles: list[str] | None = None,
                                avg_price_gbp: float | None = None,
@@ -637,8 +656,8 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
                 pass
             return None
         raise
-    title = content["title"]
-    description = content["description"]
+    title = clean_title(content["title"])
+    description = clean_text(content["description"])
     # eBay rejects listings that reference MHRA approval/registration (implied regulator endorsement)
     import re as _re_mhra
     title = _re_mhra.sub(r"\s*MHRA[\w\s-]{0,20}", " ", title).strip()
