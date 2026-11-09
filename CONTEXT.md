@@ -211,3 +211,8 @@ Still open: eBay post-order (cases) API returns 401 (monitor.py "Could not fetch
 - Effect: RAM in use 3.7 GB -> 2.2 GB (available ~1.6 GB), load avg 8-9 -> ~3. Swap still ~2.7 GB used (stale pages; frees gradually).
 - Checked, NOT stopped (all logging within the last hours): linkedin-poster-* (7 customer instances), saas-bot/web, findall-agent1, applyexpress, interview-owl, fabdealz services, postgres/redis (store backend).
 - Still wedged: findall-agent2's `MessageBus.process_commands` job logs "skipped: maximum number of running instances" every 30 s (a stuck run inside the systemd process). `systemctl restart findall-agent2` would clear it - not done (user's other project).
+
+## 2026-11-09 follow-ups
+- Full Amazon monitor run after the fixes + auto-reprice: 206 listings checked, 0 timeouts, 0 asyncio errors. 29 listings repriced upward (profit kept), 4 paused_price listings re-enabled at the higher price, 1 paused_price (Christmas Elf Decorations B0CHVDYNPX), 1 paused_oos (B0DMPKN2K7 mains lights). Active Amazon listings 192.
+- `list_own_manual.py spec.json [--dry-run]`: list own stock from a hand-written spec (title/description/images/price/cost/quantity/category_id) with NO Claude call (lister honours `title_override` + `description_override` + `category_id_override` in supplier_match). Dry run needs the eBay category checked: auto-suggest filed a dog-biscuit title under "Hair Colourants" (31412); correct = 77664 "Dog Chews & Treats". Draft spec for Bonio 5x650g + 2 balls bundle at £21.99 (cost £10.90 inc VAT = £8.45 ex-VAT Bestway + 2 balls £0.38 each), qty 14, awaiting user's go.
+- Anthropic credits exhausted again; plan: Groq fallback (key from the user's own fabdealz project, NOT the customer linkedin-poster keys).
