@@ -252,7 +252,14 @@ def main():
     # If the 6am research window already passed today and no listing was created
     # today yet, fire the research cycle immediately before starting the scheduler.
     # This handles the case where the service restarts after 6am (e.g. reboot, crash).
-    _run_startup_research_if_missed()
+    try:
+        orders_job()                    # catch up on orders immediately after every (re)start
+    except Exception as e:
+        log.error(f"Startup order poll failed: {e}")
+    try:
+        _run_startup_research_if_missed()
+    except Exception as e:              # e.g. Anthropic credits exhausted. This used to crash the whole agent and
+        log.error(f"Startup research failed ({type(e).__name__}: {str(e)[:120]}) - continuing")   # systemd restarted it ~700 times
 
     scheduler = BlockingScheduler(timezone="Europe/London")
 

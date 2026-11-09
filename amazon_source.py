@@ -38,7 +38,16 @@ _blocked_until = 0.0  # backoff after a CAPTCHA / robot check
 def _get_context():
     global _pw, _browser, _context
     if _context:
-        return _context
+        try:
+            alive = _browser is not None and _browser.is_connected()
+        except Exception:
+            alive = False
+        if alive:
+            return _context
+        log.warning("Amazon browser is dead (probably OOM-killed) - restarting it")
+        close()                      # full reset so a fresh browser can start
+    elif _pw:
+        close()                      # leaked Playwright from an earlier failure
     from playwright.sync_api import sync_playwright
     _pw = sync_playwright().start()
     _browser = _pw.chromium.launch(headless=True, args=["--no-sandbox", "--disable-dev-shm-usage"])
@@ -60,16 +69,16 @@ def _get_context():
 
 
 def close():
+    """Tear everything down. Each step is independent: a crashed browser makes context/browser close() raise, and
+    the old code then skipped _pw.stop(), leaving Playwright's event loop running in that thread - every later start
+    failed with 'Sync API inside the asyncio loop' until the whole agent was restarted (Amazon monitoring dead)."""
     global _pw, _browser, _context
-    try:
-        if _context:
-            _context.close()
-        if _browser:
-            _browser.close()
-        if _pw:
-            _pw.stop()
-    except Exception:
-        pass
+    for step in (lambda: _context and _context.close(), lambda: _browser and _browser.close(),
+                 lambda: _pw and _pw.stop()):
+        try:
+            step()
+        except Exception:
+            pass
     _pw = _browser = _context = None
 
 

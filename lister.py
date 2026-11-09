@@ -9,6 +9,7 @@ import json
 import math
 import os
 import re
+import time
 import requests
 import anthropic
 from config import (
@@ -613,15 +614,30 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
 
     # Generate optimised title + description, informed by real competitor
     # titles and our actual price for better keyword mining and positioning
-    content = _generate_listing_content(
-        keyword,
-        supplier_title,
-        supplier_match.get("description", ""),
-        category,
-        competitor_titles=opportunity.get("competitor_titles"),
-        avg_price_gbp=opportunity.get("avg_price_gbp"),
-        our_price_gbp=sell_price,
-    )
+    try:
+        content = _generate_listing_content(
+            keyword,
+            supplier_title,
+            supplier_match.get("description", ""),
+            category,
+            competitor_titles=opportunity.get("competitor_titles"),
+            avg_price_gbp=opportunity.get("avg_price_gbp"),
+            our_price_gbp=sell_price,
+        )
+    except anthropic.BadRequestError as e:
+        if "credit balance" in str(e):          # out of Anthropic credit: say so (once per 6h), skip, never crash
+            log.error("Anthropic credit balance too low - cannot write listing text, skipping")
+            try:
+                _stamp = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".credit_alert")
+                if not os.path.exists(_stamp) or time.time() - os.path.getmtime(_stamp) > 6 * 3600:
+                    open(_stamp, "w").write("1")
+                    from telegram_bot import _send
+                    _send("WARNING: Anthropic API credits are exhausted - the agent cannot create listings until you top up "
+                          "(console.anthropic.com > Billing). Orders and alerts still work.")
+            except Exception:
+                pass
+            return None
+        raise
     title = content["title"]
     description = content["description"]
     # eBay rejects listings that reference MHRA approval/registration (implied regulator endorsement)

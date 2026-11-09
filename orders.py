@@ -39,8 +39,25 @@ def _order_headers() -> dict:
 # Fetch new eBay orders
 # ---------------------------------------------------------------------------
 
-def _fetch_new_ebay_orders(since_minutes: int = 180) -> list[dict]:
-    """Fetch orders created in the last `since_minutes` minutes."""
+_LAST_POLL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".last_order_poll")
+_poll_failures = 0
+
+
+def _since_minutes(default: int = 180) -> int:
+    """Look back to the last SUCCESSFUL poll (+15 min margin), at least `default`, at most 7 days - so an outage
+    (crash loop, restart, eBay error) can never make the agent miss an order. Duplicates are skipped via the DB."""
+    try:
+        last = float(open(_LAST_POLL_FILE).read())
+        return max(default, min(int((datetime.now(timezone.utc).timestamp() - last) / 60) + 15, 7 * 24 * 60))
+    except Exception:
+        return 24 * 60              # no record yet: look back a full day once
+
+
+def _fetch_new_ebay_orders(since_minutes: int | None = None) -> list[dict]:
+    """Fetch orders created since the last successful poll (see _since_minutes)."""
+    global _poll_failures
+    if since_minutes is None:
+        since_minutes = _since_minutes()
     since = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).strftime(
         "%Y-%m-%dT%H:%M:%S.000Z"
     )
@@ -52,9 +69,23 @@ def _fetch_new_ebay_orders(since_minutes: int = 180) -> list[dict]:
     try:
         resp = requests.get(url, headers=_order_headers(), params=params, timeout=15)
         resp.raise_for_status()
-        return resp.json().get("orders", [])
+        orders = resp.json().get("orders", [])
+        try:
+            open(_LAST_POLL_FILE, "w").write(str(datetime.now(timezone.utc).timestamp()))
+        except OSError:
+            pass
+        _poll_failures = 0
+        return orders
     except Exception as e:
         log.error(f"Failed to fetch eBay orders: {e}")
+        _poll_failures += 1
+        if _poll_failures == 3:     # ~45 minutes of failed polls: tell the owner, once per outage
+            try:
+                from telegram_bot import _send
+                _send("WARNING: the agent could not read eBay orders for the last 3 polls (" + str(e)[:120] +
+                      "). Check eBay for new orders manually until this clears.")
+            except Exception:
+                pass
         return []
 
 

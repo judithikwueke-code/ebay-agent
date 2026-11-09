@@ -39,7 +39,23 @@ def pack_count(title: str):
     return None
 
 
+CSV_COLS = ["id", "listing", "asin", "ebay_title", "ebay_price", "amazon_price_now", "db_cost_incl_vat", "real_profit",
+            "margin_pct", "in_stock", "status", "amazon_title"]
+CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "audit_listings.csv")
+
+
+def _append_csv(row):
+    new = not os.path.exists(CSV_PATH)
+    with open(CSV_PATH, "a", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=CSV_COLS, extrasaction="ignore")
+        if new:
+            w.writeheader()
+        w.writerow(row)
+
+
 def main():
+    if os.path.exists(CSV_PATH):
+        os.remove(CSV_PATH)
     limit = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else None
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute("SELECT id, ebay_listing_id, supplier_product_id, title, listed_price_gbp, cost_gbp FROM products "
@@ -50,11 +66,24 @@ def main():
     out = []
     for n, (pid, lid, asin, title, price, cost_exvat) in enumerate(rows, 1):
         prod = None
-        for attempt in range(2):                       # one retry: timeouts are common when the box is busy
-            prod = amazon_source.get_product(asin)
+        for attempt in range(3):                       # retries: timeouts/crashes are common when the box is busy
+            try:
+                prod = amazon_source.get_product(asin)
+            except Exception as e:                     # browser died (e.g. OOM kill) -> restart it
+                print(f"  browser error ({str(e)[:60]}) - restarting", flush=True)
+                try:
+                    amazon_source.close()
+                except Exception:
+                    pass
+                prod = None
             if prod:
                 break
-            time.sleep(3)
+            time.sleep(4)
+            if attempt == 1:
+                try:
+                    amazon_source.close()
+                except Exception:
+                    pass
         row = {"id": pid, "listing": lid, "asin": asin, "ebay_title": title[:70], "ebay_price": price,
                "db_cost_incl_vat": round((cost_exvat or 0) * 1.2, 2)}
         if not prod:
@@ -74,11 +103,14 @@ def main():
             if row["db_cost_incl_vat"] and abs(now - row["db_cost_incl_vat"]) / max(now, 0.01) > 0.05:
                 flags.append(f"COST DRIFT (db £{row['db_cost_incl_vat']} vs now £{now})")
             pe, pa = pack_count(title), pack_count(prod["title"])
-            if pe != pa and (pe or pa):
-                flags.append(f"PACK MISMATCH (eBay {pe or 1} vs Amazon {pa or 1})")
+            if pe and pe > (pa or 1):                       # we advertise more units than the Amazon item contains
+                flags.append(f"PACK SHORT (eBay says {pe}, Amazon item is {pa or 1})")
+            elif pa and pa > (pe or 1) and (pe or 1) > 1:
+                flags.append(f"PACK CHECK (eBay {pe}, Amazon {pa})")
             row["status"] = "; ".join(flags) or "OK"
         out.append(row)
         print(f"[{n}/{len(rows)}] {asin} {row['status']}", flush=True)
+        _append_csv(row)
         time.sleep(1.5)
     amazon_source.close()
 
