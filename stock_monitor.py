@@ -36,11 +36,8 @@ _STOP = {
 
 def _send_telegram(msg: str):
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-            json={"chat_id": TELEGRAM_CHAT_ID, "text": msg},
-            timeout=10,
-        )
+        from telegram_bot import _send        # retries 3x, checks Telegram's reply, adds the account label
+        _send(msg)
     except Exception as e:
         log.warning(f"Telegram send failed: {e}")
 
@@ -231,7 +228,7 @@ def run_amazon_monitor():
     min_margin = float(os.getenv("AMAZON_MIN_MARGIN_PCT", "10"))
     conn = sqlite3.connect(DB_PATH)
     rows = conn.execute(
-        "SELECT id, supplier_product_id, title, listed_price_gbp, status "
+        "SELECT id, supplier_product_id, title, listed_price_gbp, status, cost_gbp "
         "FROM products WHERE supplier='amazon' AND status IN ('active','paused_oos','paused_price') ORDER BY id"
     ).fetchall()
     conn.close()
@@ -241,7 +238,7 @@ def run_amazon_monitor():
 
     notes = []
     try:
-        for pid, asin, title, listed_price, status in rows:
+        for pid, asin, title, listed_price, status, cost_exvat in rows:
             sku = hashlib.md5(f"amazon-{asin}".encode()).hexdigest()[:20]
             res = check_amazon_listing(asin)
             if res.get("blocked"):
@@ -249,6 +246,21 @@ def run_amazon_monitor():
                 break
             if res["in_stock"] is None:
                 continue  # unreadable page - change nothing
+            if res["in_stock"] and res["price"] is not None and status in ("active", "paused_price"):
+                new_price, note = _auto_reprice(pid, asin, title, listed_price, cost_exvat, res["price"], VAT_RATE)
+                if new_price:
+                    if _set_ebay_price(sku, new_price):
+                        c2 = sqlite3.connect(DB_PATH)
+                        c2.execute("UPDATE products SET listed_price_gbp=?, cost_gbp=? WHERE id=?",
+                                   (new_price, round(res["price"] / (1 + VAT_RATE), 2), pid))
+                        c2.commit()
+                        c2.close()
+                        listed_price = new_price          # the viability check below now uses the new price
+                        notes.append("Repriced: " + note)
+                    else:
+                        notes.append("Wanted to reprice but eBay refused: " + note)
+                elif note:
+                    notes.append(note)
             viable = res["in_stock"] and res["price"] is not None and (
                 _calc_margin(res["price"] / (1 + VAT_RATE), 0.0, listed_price or 0) >= min_margin  # shelf price is VAT-inclusive
             )
@@ -333,6 +345,55 @@ def _update_status(product_id: int, status: str):
     conn.execute("UPDATE products SET status=? WHERE id=?", (status, product_id))
     conn.commit()
     conn.close()
+
+
+def _set_ebay_price(sku: str, price: float) -> bool:
+    """Change the live eBay price of a SKU's offer(s), leaving the quantity exactly as it is."""
+    try:
+        offers = requests.get(f"{EBAY_SELL_BASE}/offer", headers=_sell_headers(), params={"sku": sku},
+                              timeout=15).json().get("offers", [])
+        if not offers:
+            return False
+        ok = True
+        for o in offers:
+            r = requests.post(
+                f"{EBAY_SELL_BASE}/bulk_update_price_quantity", headers=_sell_headers(), timeout=20,
+                json={"requests": [{"sku": sku, "offers": [{
+                    "offerId": o["offerId"], "availableQuantity": o.get("availableQuantity", 0),
+                    "price": {"value": f"{price:.2f}", "currency": "GBP"}}]}]})
+            ok = ok and r.status_code in (200, 201, 204) and \
+                all(x.get("statusCode", 200) in (200, 201, 204) for x in (r.json().get("responses") or []))
+        return ok
+    except Exception as e:
+        log.error(f"eBay price update failed for {sku}: {e}")
+        return False
+
+
+def _auto_reprice(pid, asin, title, listed_price, cost_exvat, amazon_shelf, vat_rate):
+    """
+    Amazon's price rose -> raise the eBay price by the same amount (grossed up for the eBay/ad fee that is taken as a
+    % of the sale) so the profit we planned at listing time is kept, instead of pausing the listing.
+    The recorded cost is the baseline: it only moves UP with Amazon (when Amazon later dips we keep the extra profit,
+    and a later return to the old price changes nothing).
+    Returns (new_price_or_None, note_or_None). Guards: a rise above AUTO_REPRICE_MAX_PCT % or AUTO_REPRICE_MAX_GBP is more
+    likely a wrong variation / one-off spike than a real price change, so it is left to the normal pause logic + alert.
+    """
+    if os.getenv("AUTO_REPRICE", "1") != "1" or not cost_exvat or not listed_price or amazon_shelf is None:
+        return None, None
+    base = cost_exvat * (1 + vat_rate)                       # shelf (VAT-inclusive) price we priced from
+    delta = amazon_shelf - base
+    if delta <= max(0.05, base * 0.005):
+        return None, None                                    # unchanged, cheaper, or noise
+    max_pct = float(os.getenv("AUTO_REPRICE_MAX_PCT", "25"))
+    max_gbp = float(os.getenv("AUTO_REPRICE_MAX_GBP", "8"))
+    if delta > max_gbp or (delta > base * max_pct / 100 and delta > 2.0):   # small £ rises on cheap items are fine
+        return None, (f"Amazon price jump too big to auto-reprice (£{base:.2f} -> £{amazon_shelf:.2f}) - please check it is "
+                      f"the same variation: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
+    ad = float(os.getenv("PROMOTE_RATE", "2.0")) / 100 * 1.2 if os.getenv("PROMOTE_CAMPAIGN_ID") else 0.0
+    fee = ad + (0.0 if os.getenv("EBAY_NO_SELLER_FEES") == "1" else 0.15)
+    new_price = round(listed_price + delta / (1 - fee), 2)
+    return new_price, (f"Amazon £{base:.2f} -> £{amazon_shelf:.2f} (+£{delta:.2f}): eBay price £{listed_price:.2f} -> "
+                       f"£{new_price:.2f}, profit kept | {title[:50]}")
 
 
 if __name__ == "__main__":
