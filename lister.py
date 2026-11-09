@@ -614,8 +614,12 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
 
     # Generate optimised title + description, informed by real competitor
     # titles and our actual price for better keyword mining and positioning
+    content = None
+    if supplier_match.get("title_override") and supplier_match.get("description_override"):
+        # hand-written title + description (own-stock listings): no Claude call needed
+        content = {"title": supplier_match["title_override"], "description": supplier_match["description_override"]}
     try:
-        content = _generate_listing_content(
+        content = content or _generate_listing_content(
             keyword,
             supplier_title,
             supplier_match.get("description", ""),
@@ -667,7 +671,9 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     # Resolve a leaf category from the Claude-generated title.
     # Research category IDs are parent categories (Browse searches work fine with them)
     # but eBay's Sell API requires a leaf category — non-leaf triggers error 25005.
-    if not is_furniture:
+    if supplier_match.get("category_id_override"):          # explicit leaf category chosen by the user/operator
+        category_id = str(supplier_match["category_id_override"])
+    elif not is_furniture:
         leaf_fallback = CATEGORIES.get(category, {}).get("leaf_id", category_id)
         category_id = _suggest_ebay_category(title, leaf_fallback)
 
