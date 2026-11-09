@@ -1,0 +1,31 @@
+{
+  "_note": "High-ticket seeds (GBP 40-450) incl. the portable steam sauna that sold 211 units at 59.90 (user-spotted 2026-11-09). Used with campaign_discover.py --premium --manual.",
+  "health_devices": [
+    "portable steam sauna", "steam sauna tent with chair", "steam sauna spa room", "far infrared sauna blanket",
+    "red light therapy panel", "massage chair full body", "shiatsu massage chair pad", "foot spa massager heated",
+    "electric massage gun deep tissue", "infrared heating pad large", "foot bath spa massage", "neck and shoulder massager shiatsu"
+  ],
+  "sports_fitness": [
+    "walking pad treadmill", "under desk treadmill folding", "folding exercise bike", "rowing machine foldable",
+    "power tower dip station", "adjustable dumbbells 24kg", "vibration plate exercise machine", "mini stepper with resistance bands",
+    "kettlebell set cast iron", "weight bench adjustable", "boxing punch bag freestanding", "inversion table"
+  ],
+  "home_appliances": [
+    "air purifier hepa large room", "dehumidifier 12l", "electric heated clothes airer", "robot vacuum cleaner mop",
+    "portable air conditioner", "oil filled radiator", "electric fireplace heater", "steam mop floor",
+    "cordless stick vacuum cleaner", "air fryer dual drawer", "portable projector 1080p", "slow cooker 6l digital"
+  ],
+  "garden_outdoor": [
+    "inflatable hot tub", "outdoor fire pit table", "patio heater electric", "pop up gazebo 3x3 waterproof",
+    "hammock with stand", "garden storage box large", "electric pressure washer", "cordless leaf blower"
+  ],
+  "tools_hardware": [
+    "cordless drill set 18v", "laser level self levelling", "tool chest on wheels", "workbench folding"
+  ],
+  "tech_accessories": [
+    "noise cancelling headphones", "gaming monitor 27 inch", "smart watch fitness tracker", "dash cam front and rear"
+  ],
+  "pet_supplies": [
+    "automatic litter box", "heated dog bed orthopaedic large", "pet water fountain stainless steel large"
+  ]
+}

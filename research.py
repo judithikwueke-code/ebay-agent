@@ -593,6 +593,12 @@ def find_opportunities(top_n: int = 20, only_keywords: dict | None = None) -> li
         weight = cat_info["weight"]
         min_price = cat_info.get("min_price", MIN_PRICE_GBP)
         max_price = cat_info.get("max_price", MAX_PRICE_GBP)
+        _band = os.getenv("RESEARCH_PRICE_BAND")          # e.g. "40-450": premium/high-ticket research runs
+        if _band:
+            try:
+                min_price, max_price = (float(x) for x in _band.split("-"))
+            except ValueError:
+                pass
         keywords = seed_keywords.get(cat_key, [])
         seen_kws = set()
 

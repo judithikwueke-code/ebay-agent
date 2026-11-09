@@ -22,6 +22,14 @@ import sys
 os.environ["QUOTA_RESERVE"] = "250"   # campaign may dip deeper than the agent default (600)
 os.environ["SEASONAL_ONLY"] = "0"   # campaign runs list outside the Christmas-only seasonal filter
 os.environ.setdefault("DAILY_LISTING_CAP", "150")   # set before config loads .env (which never overrides)
+PREMIUM = "--premium" in sys.argv
+if PREMIUM:
+    # High-ticket mode (e.g. portable saunas, walking pads, hot tubs): eBay price window GBP 40-450, fewer weekly sales are
+    # enough (these sell slower but earn much more per sale) and every listing must clear a real profit (GBP 8 at the
+    # cheapest-quarter price), not the usual GBP 2. Set BEFORE research/config import (module-level constants).
+    os.environ["RESEARCH_PRICE_BAND"] = "40-450"
+    os.environ["DEMAND_MIN_SOLD_PER_WEEK"] = "1.5"
+    os.environ["MIN_PROFIT_AT_P25"] = "8"
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -83,7 +91,7 @@ tie-ins (it is early November in the UK, Christmas and winter ahead), and items 
 ready-made KITS and BUNDLES where a kit is what people actually buy (e.g. survival / emergency / car kits sold
 well at GBP 60), as well as single items.
 Rules: each keyword is a 2-5 word eBay search phrase for ONE product type that Amazon UK sells for roughly
-GBP 4-90. NO food, drink, medicine, gas canisters, loose lithium batteries, weapons, knives, or branded
+{"GBP 50-400 (HIGH-TICKET mode: wellness, fitness, home comfort, garden, tech; e.g. portable steam saunas sell 200+ units at GBP 60; prefer products that ship in one box, avoid freight/pallet items, furniture and anything fragile or heavy over 30kg)" if PREMIUM else "GBP 4-90"}. NO food, drink, medicine, gas canisters, loose lithium batteries, weapons, knives, or branded
 products. Assign each to one category key from: {CATS}.
 Return ONLY JSON: {{"category_key": ["keyword", ...], ...}}"""
     return _claude_json(prompt, 6500)
