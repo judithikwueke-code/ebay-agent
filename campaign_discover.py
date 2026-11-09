@@ -33,11 +33,8 @@ CATS = ["tools_hardware", "auto_parts", "sports_fitness", "health_devices", "gar
 
 
 def _claude_json(prompt: str, max_tokens: int = 4000):
-    import anthropic
-    from config import ANTHROPIC_API_KEY
-    msg = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY).messages.create(
-        model=MODEL, max_tokens=max_tokens, messages=[{"role": "user", "content": prompt}])
-    text = msg.content[0].text
+    from llm import complete                       # Claude first, automatic Groq fallback
+    text = complete(prompt, max_tokens, model=MODEL)
     m = re.search(r"\{.*\}", text, re.S)
     return json.loads(m.group(0)) if m else {}
 

@@ -49,18 +49,16 @@ Identify the SINGLE product pictured. Return ONLY JSON:
  "visible_price_gbp": null, "search_queries": ["3 different Amazon UK search phrases, most specific first"],
  "ebay_keyword": "2-5 word generic eBay search phrase for this product type (no brand)",
  "category_key": "one of {CATS}", "notes": "anything unclear or risky (brand, restricted item, multiple products)"}}"""
-    msg = _claude().messages.create(model=VISION_MODEL, max_tokens=700, messages=[{"role": "user", "content": [
-        {"type": "image", "source": {"type": "base64", "media_type": mime, "data": data}},
-        {"type": "text", "text": prompt}]}])
-    return _json(msg.content[0].text)
+    from llm import complete
+    return _json(complete(prompt, 700, model=VISION_MODEL, images=[(mime, data)]))
 
 
 def derive_from_title(title: str, caption: str) -> dict:
     prompt = f"""Amazon UK product: "{title}". Seller note: "{caption}".
 Return ONLY JSON: {{"ebay_keyword": "2-5 word generic eBay search phrase for this product type (no brand)",
 "category_key": "one of {CATS}"}}"""
-    msg = _claude().messages.create(model=FAST_MODEL, max_tokens=150, messages=[{"role": "user", "content": prompt}])
-    return _json(msg.content[0].text)
+    from llm import complete
+    return _json(complete(prompt, 150, model=FAST_MODEL))
 
 
 def pick_best(spec: dict, cands: list) -> dict:
@@ -70,8 +68,8 @@ Amazon UK candidates:
 {lines}
 Which candidate is the SAME product (same brand/model, same pack size/count)? Return ONLY JSON:
 {{"best_index": <number or null if none is the same product>, "confidence": "high|medium|low", "reason": "one short sentence"}}"""
-    msg = _claude().messages.create(model=FAST_MODEL, max_tokens=200, messages=[{"role": "user", "content": prompt}])
-    return _json(msg.content[0].text)
+    from llm import complete
+    return _json(complete(prompt, 200, model=FAST_MODEL))
 
 
 UA = ("Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -149,14 +147,12 @@ def ebay_item_info(item_id: str) -> dict:
 def spec_from_info(info: dict, caption: str) -> dict:
     """Claude turns scraped page text (+ product photo when available) into the sourcing spec."""
     import requests
-    content = []
+    images = []
     if info.get("image"):
         try:
             r = requests.get(info["image"], headers={"User-Agent": UA}, timeout=20)
             if r.ok and r.headers.get("content-type", "").startswith("image/"):
-                content.append({"type": "image", "source": {"type": "base64",
-                                "media_type": r.headers["content-type"].split(";")[0],
-                                "data": base64.standard_b64encode(r.content).decode()}})
+                images.append((r.headers["content-type"].split(";")[0], base64.standard_b64encode(r.content).decode()))
         except Exception:
             pass
     prompt = f"""A UK eBay seller wants to source this product from Amazon UK and resell it.
@@ -170,9 +166,8 @@ Identify the SINGLE product. Return ONLY JSON:
  "visible_price_gbp": null, "search_queries": ["3 different Amazon UK search phrases, most specific first"],
  "ebay_keyword": "2-5 word generic eBay search phrase for this product type (no brand)",
  "category_key": "one of {CATS}", "notes": "anything unclear or risky"}}"""
-    content.append({"type": "text", "text": prompt})
-    msg = _claude().messages.create(model=VISION_MODEL, max_tokens=700, messages=[{"role": "user", "content": content}])
-    return _json(msg.content[0].text)
+    from llm import complete
+    return _json(complete(prompt, 700, model=VISION_MODEL, images=images or None))
 
 
 def source_from_spec(spec: dict) -> dict:

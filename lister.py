@@ -196,17 +196,12 @@ Supplier description: {description[:500] if description else 'Not provided'}
 Respond in JSON exactly:
 {{"title": "...", "description": "..."}}"""
 
-    message = _claude.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=512,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = message.content[0].text.strip()
-    # Strip markdown code fences if present
-    if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
+    from llm import complete as _llm_complete          # Claude first, automatic Groq fallback
+    text = _llm_complete(prompt, 600, model="claude-sonnet-4-6").strip()
+    # Pull the JSON object out of any code fences / chatter around it
+    _m = re.search(r"\{.*\}", text, re.S)
+    if _m:
+        text = _m.group(0)
     try:
         return json.loads(text)
     except json.JSONDecodeError:
@@ -628,8 +623,8 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
             avg_price_gbp=opportunity.get("avg_price_gbp"),
             our_price_gbp=sell_price,
         )
-    except anthropic.BadRequestError as e:
-        if "credit balance" in str(e):          # out of Anthropic credit: say so (once per 6h), skip, never crash
+    except Exception as e:
+        if "credit balance" in str(e) or "all LLM providers failed" in str(e):   # no AI provider at all: say so (once per 6h), skip, never crash
             log.error("Anthropic credit balance too low - cannot write listing text, skipping")
             try:
                 _stamp = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".credit_alert")

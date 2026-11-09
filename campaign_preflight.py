@@ -25,14 +25,10 @@ except Exception as e:
     problems.append(f"eBay Browse API check failed: {e}")
 
 try:
-    import anthropic
-    from config import ANTHROPIC_API_KEY
-    anthropic.Anthropic(api_key=ANTHROPIC_API_KEY).messages.create(
-        model="claude-haiku-4-5", max_tokens=5, messages=[{"role": "user", "content": "hi"}])
+    from llm import complete                      # passes if EITHER Claude or the Groq fallback answers
+    complete("Reply with the single word: ok", 10, model="claude-haiku-4-5")
 except Exception as e:
-    msg = str(e)
-    problems.append("Anthropic API credits too low - top up at console.anthropic.com" if "credit balance" in msg
-                    else f"Anthropic API check failed: {msg[:120]}")
+    problems.append("No AI provider is working (Anthropic credits low AND Groq failed): " + str(e)[:160])
 
 if problems:
     print("PREFLIGHT FAILED: " + "; ".join(problems))
