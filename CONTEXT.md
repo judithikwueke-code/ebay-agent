@@ -204,3 +204,10 @@ Still open: eBay post-order (cases) API returns 401 (monitor.py "Could not fetch
 - Done: force-killed 4 wedged Chromium (v1228) belonging to findall agent2 (aged 25-103 h; its job `MessageBus.process_commands` was skipping "maximum running instances" every 30 s) -> freed ~350 MB RAM + ~1 GB swap; agent2 resumed scraping. Removed my temp scripts and rebuildable caches (pip, node-gyp). Earlier: 9.5 GB disk freed (indeed_scrape_tmp).
 - Found, NOT touched (other projects): a second `python3 -m agent2.main` started by hand ~89 days ago (pid 3990057, outside systemd) duplicating the findall-agent2 service; findall agent2 leaks browsers (needs `browser.close()` in finally / periodic restart).
 - Recommended: upgrade to a 4 vCPU / 8 GB Hetzner plan; or retire unused services (n8n? duplicate agent2?, idle linkedin-poster instances).
+
+## Server: duplicate + idle services stopped (2026-11-09, user request)
+- **Stopped the duplicate `agent2.main`** (pid 3990057, hand-started ~Aug 12 via `nohup`, outside systemd; it shared agent2.db / shared.db / agent2.log with the findall-agent2 service = double writers). The systemd instance (pid 607271) was kept.
+- **Stopped + disabled n8n** (`systemctl stop n8n && systemctl disable n8n`): its only workflow ("Findall.ng Elite SEO Agent", 05:00 daily) had errored every day for 10+ days; it used ~150-225 MB RAM and 242 CPU-min. Restore with `systemctl enable --now n8n` (data in /root/.n8n untouched).
+- Effect: RAM in use 3.7 GB -> 2.2 GB (available ~1.6 GB), load avg 8-9 -> ~3. Swap still ~2.7 GB used (stale pages; frees gradually).
+- Checked, NOT stopped (all logging within the last hours): linkedin-poster-* (7 customer instances), saas-bot/web, findall-agent1, applyexpress, interview-owl, fabdealz services, postgres/redis (store backend).
+- Still wedged: findall-agent2's `MessageBus.process_commands` job logs "skipped: maximum number of running instances" every 30 s (a stuck run inside the systemd process). `systemctl restart findall-agent2` would clear it - not done (user's other project).
