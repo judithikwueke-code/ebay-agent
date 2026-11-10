@@ -229,3 +229,18 @@ Still open: eBay post-order (cases) API returns 401 (monitor.py "Could not fetch
 - `run_premium.sh [cap=10]` queues behind any growth run (blocking flock on /tmp/growth.lock). First run queued 2026-11-09 after the Black Friday test theme. TODO: add `PREMIUM:` theme support to run_growth.sh (not edited while a run was executing - bash re-reads running scripts) so premium themes rotate daily.
 - Risks: bigger refunds/returns exposure per order; Amazon orders are fulfilled manually (watch cash outlay); auto-reprice caps (£8 / 25%) still apply.
 - 2026-11-09: Groq-written titles used look-alike Unicode (U+2011 non-breaking hyphens), sometimes started lowercase or ran past 80 chars. `lister.clean_title()/clean_text()` now normalise punctuation to ASCII, capitalise, and cut at 80 chars on a word boundary (applied to every generated title/description). The 5 listings from the Black Friday test run were cleaned on eBay + DB (`fix_titles.py` pattern: PUT inventory item). Test run result: 228 keywords researched, 5 listed (digital caliper, dog rope toy, catnip mice, speed jump rope, PIR LED strip); 126 skipped for low sales, 20 no supplier, 7 can't compete.
+
+## Market radar - "intelligence agent" (2026-11-10, user: find items that sell multiple times a day)
+Why none were found before: demand gate used lifetime averages from 3 sampled listings, keywords were LLM guesses, watch pipeline
+processed 13 items ever (brand check rejected "Unbranded"), ads at 2%, growth runs failed Nov 7-9 (Anthropic credit).
+Files: radar_db.py (schema/cells/velocity maths), market_radar.py (sweeps + item snapshots, CLI run/report/push/digest/cells),
+radar_out.py (push to watch_items source='radar', outcomes, report, Telegram digest), run_radar.sh (cron wrapper, flock /tmp/radar.lock).
+DB: radar.db on server (not in git). Data: Browse item_summary sweeps per category + GET /item (estimatedSoldQuantity) snapshots;
+free Merchandising getMostWatchedItems for 1,729 categories. Sold-count deltas between snapshots = measured sales/day
+(ROCKET/FAST/RISING/STEADY/HIGH); PROV = provisional from lifetime average. Trends need 3 days of history.
+Cron (UTC): 08:10 600 --digest, 14:10 700, 20:10 900 --digest, 02:10 600. RADAR_QUOTA_FLOOR 900 protects other jobs.
+watch_scan.py upgraded for radar items: ignores placeholder brands, uses the fast seller's price as reference, min profit GBP3,
+exact match else closest equivalent (RADAR_EQUIV=1; cost must be >=30% of rival price), verifies real product-page price,
+radar cap 15 listings/day, stops batch when Amazon blocks or no AI provider. First real batch listed 2 (radiator B0CYGYJHTL
+GBP164.49, Silentnight blanket B00EO2VR5C GBP29.99). Most fast movers fail on Amazon cost (wholesale-priced) - expected.
+Open: llm.py still Groq-only fallback (Anthropic credit empty); Gemini key untested; ad rate 2% vs ~12% suggested needs approval.

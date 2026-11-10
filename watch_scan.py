@@ -15,6 +15,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 
 import amazon_source
 from config import VAT_RATE
@@ -27,6 +28,29 @@ MIN_SOLD_TOTAL = int(os.getenv("WATCH_MIN_SOLD", "50"))
 MIN_BASKETS = int(os.getenv("WATCH_MIN_BASKETS", "5"))
 MIN_WATCHERS = int(os.getenv("WATCH_MIN_WATCHERS", "100"))
 MIN_PROFIT = float(os.getenv("MIN_PROFIT_AT_P25", "2"))
+# Items pushed by the market radar (source='radar'): eBay listings MEASURED to be selling fast
+RADAR_MIN_RATE = float(os.getenv("RADAR_MIN_RATE", "1.0"))           # sales/day needed (half of it from GBP 60 up)
+RADAR_MIN_PROFIT = float(os.getenv("RADAR_MIN_PROFIT", "3"))         # GBP per sale at the fast seller's price
+RADAR_UNDERCUT = float(os.getenv("RADAR_UNDERCUT_PCT", "3")) / 100   # go this far under that price when profit allows
+RADAR_EQUIV = os.getenv("RADAR_EQUIV", "1") == "1"                   # no exact match: list the closest equivalent
+RADAR_EQUIV_MIN_SIM = float(os.getenv("RADAR_EQUIV_MIN_SIM", "0.35"))
+RADAR_DAILY_LIST_CAP = int(os.getenv("RADAR_DAILY_LIST_CAP", "15"))
+_NO_BRAND = {"unbranded", "does not apply", "generic", "handmade", "n/a", "na", "none", "no brand", "not applicable",
+             "unknown", "-", "branded", "oem", "no", "see description", "various"}
+
+
+class AmazonBlocked(Exception):
+    """Amazon is showing robot checks - stop the batch and keep the items for later."""
+
+
+def _brand(it: dict) -> str:
+    b = (it.get("brand") or "").strip()
+    return "" if b.lower() in _NO_BRAND else b
+
+
+def _is_radar(it: dict) -> bool:
+    return (it.get("source") or "") == "radar"
+
 
 _STOP = {"the", "and", "for", "with", "new", "set", "pack", "of", "in", "to", "a", "an", "uk", "free", "fast",
          "delivery", "colours", "colour", "color", "assorted", "mixed"}
@@ -67,7 +91,20 @@ def same_numbers(ebay_title: str, amazon_title: str) -> bool:
     return len(need & have) / len(need) >= 0.6
 
 
+def coverage(ebay_title: str, amazon_title: str) -> float:
+    """Share of the eBay title's words found in the Amazon title (Amazon titles are long, which drags similarity down)."""
+    a, b = _tokens(ebay_title), _tokens(amazon_title)
+    return len(a & b) / len(a) if a and b else 0.0
+
+
 def demand_ok(it: dict) -> tuple[bool, str]:
+    if _is_radar(it):
+        rate, price = it.get("radar_rate") or 0.0, it.get("price") or 0.0
+        need = RADAR_MIN_RATE / 2 if price >= 60 else RADAR_MIN_RATE
+        kind = "average since listed" if it.get("radar_cls") == "PROV" else "measured"
+        if rate >= need:
+            return True, f"radar {it.get('radar_cls')}: {rate:g} sold/day {kind}"
+        return False, f"radar: {rate:g} sold/day is under {need:g}"
     checks = [("sold today", it.get("sold_today"), MIN_SOLD_TODAY), ("sold", it.get("sold_total"), MIN_SOLD_TOTAL),
               ("in baskets", it.get("in_baskets"), MIN_BASKETS), ("watchers", it.get("watchers"), MIN_WATCHERS)]
     for label, val, need in checks:
@@ -76,36 +113,93 @@ def demand_ok(it: dict) -> tuple[bool, str]:
     return False, "demand below thresholds"
 
 
-def find_amazon_match(it: dict) -> tuple[dict | None, str]:
-    """Best Amazon candidate for this eBay item, with the reason it was accepted."""
+def _search(q: str, ceiling: float, limit: int = 8) -> list[dict]:
+    """Amazon search that says so when Amazon is blocking us (search_amazon just returns nothing)."""
+    if time.time() < amazon_source._blocked_until:
+        raise AmazonBlocked()
+    cands = amazon_source.search_amazon(q, ceiling, limit=limit, strict=False, min_reviews=5)
+    if not cands and time.time() < amazon_source._blocked_until:
+        raise AmazonBlocked()
+    return cands
+
+
+def find_amazon_match(it: dict, pool: list | None = None, max_cost: float | None = None) -> tuple[dict | None, str]:
+    """Best Amazon candidate for this eBay item, with the reason it was accepted. Every search result is added to
+    `pool`; with `max_cost`, an exact match we can afford beats a closer one we cannot."""
     title = it["title"]
     price = it.get("price") or 20.0
-    ceiling = max(price * 3, 15.0) * (1 + VAT_RATE)
+    radar = _is_radar(it)
+    ceiling = max(price * 1.5, 15.0) if radar else max(price * 3, 15.0) * (1 + VAT_RATE)
+    brand = _brand(it)
     queries = []
-    if it.get("ean"):
-        queries.append(("barcode", it["ean"]))
+    ean = re.sub(r"\D", "", str(it.get("ean") or ""))
+    if len(ean) in (8, 12, 13, 14):
+        queries.append(("barcode", ean))
     code = next((c for c in (it.get("mpn"), it.get("model"))
-                 if c and len(c) >= 4 and any(ch.isdigit() for ch in c)), None)   # ignore junk like "SN"
-    if it.get("brand") and code:
-        queries.append(("brand+model", f"{it['brand']} {code}"))
-    queries.append(("title", " ".join(re.sub(r"[^A-Za-z0-9 ]", " ", title).split()[:10])))
+                 if c and len(c) >= 4 and any(ch.isdigit() for ch in c) and c.lower() not in _NO_BRAND), None)
+    if brand and code:
+        queries.append(("brand+model", f"{brand} {code}"))
+    words = re.sub(r"[^A-Za-z0-9 ]", " ", title).split()
+    queries.append(("title", " ".join(words[:10])))
+    if radar:                                                    # second try: just the words that name the product
+        core = [w for w in words if len(w) >= 3 and w.lower() not in _STOP and not w.isdigit()][:6]
+        if len(core) >= 3 and " ".join(core) != " ".join(words[:10]):
+            queries.append(("title", " ".join(core)))
 
-    for how, q in queries:
-        cands = amazon_source.search_amazon(q, ceiling, limit=8, strict=False, min_reviews=5)
-        best, best_sim = None, 0.0
+    seen = {c["product_id"] for c in pool} if pool is not None else set()
+    for n, (how, q) in enumerate(queries):
+        if n == len(queries) - 1 and radar and len(queries) >= 2 and queries[-2][0] == "title" and len(seen) >= 4:
+            break                                                # the first title search already gave plenty to judge
+        cands = _search(q, ceiling, 10 if radar else 8)
+        best, best_key = None, None
         for c in cands:
+            if pool is not None and c["product_id"] not in seen:
+                seen.add(c["product_id"])
+                pool.append(c)
             sim = similarity(title, c["title"])
             if how == "barcode":
                 ok = True                                   # Amazon matched the barcode itself
             else:
                 ok = sim >= 0.45 and same_numbers(title, c["title"])
-                if ok and it.get("brand") and it["brand"].lower() not in c["title"].lower():
+                if ok and brand and brand.lower() not in c["title"].lower():
                     ok = False
-            if ok and (best is None or sim > best_sim):
-                best, best_sim = c, sim
+            key = (max_cost is None or c["cost_gbp"] <= max_cost, sim)
+            if ok and (best is None or key > best_key):
+                best, best_key = c, key
         if best:
-            return best, f"{how} match (similarity {best_sim:.2f})"
+            return best, f"{how} match (similarity {best_key[1]:.2f})"
     return None, "no exact match on Amazon"
+
+
+def best_equivalent(it: dict, pool: list, max_cost: float) -> tuple[dict | None, str]:
+    """No identical product: the closest SIMILAR Amazon product we can still sell at the fast seller's price.
+    Same sizes/pack counts, real reviews, no child products, no protected brands."""
+    from deal_scan import BLOCK_WORDS
+    from research import _is_policy_blocked, _is_vero
+    title = it["title"]
+    best, key, dear = None, None, None
+    for c in pool:
+        low = c["title"].lower()
+        sim, cov = similarity(title, c["title"]), coverage(title, c["title"])
+        if not (sim >= RADAR_EQUIV_MIN_SIM or (sim >= 0.22 and cov >= 0.55)) or not same_numbers(title, c["title"]):
+            continue
+        if any(w in low or w in title.lower() for w in CHILD_WORDS) or any(w in low for w in BLOCK_WORDS):
+            continue
+        if (c.get("amazon_reviews") or 0) < 20 or _is_policy_blocked(c["title"]) or _is_vero(c["title"]):
+            continue
+        if c["cost_gbp"] < 0.3 * (max_cost + RADAR_MIN_PROFIT):   # far cheaper than the rival's price: a different product/size
+            continue
+        if c["cost_gbp"] > max_cost:
+            dear = c["cost_gbp"] if dear is None else min(dear, c["cost_gbp"])
+            continue
+        k = (round(sim + cov, 2), -c["cost_gbp"])
+        if key is None or k > key:
+            best, key = c, k
+    if best:
+        return best, f"closest equivalent (similarity {similarity(title, best['title']):.2f}, {best.get('amazon_reviews')} reviews)"
+    if dear is not None:
+        return None, f"DEAR: similar product on Amazon costs GBP {dear:.2f}, most we can pay is GBP {max_cost:.2f}"
+    return None, "no exact match and no similar product on Amazon"
 
 
 _DRY = False
@@ -117,11 +211,13 @@ CHILD_WORDS = ("kid", "child", "baby", "infant", "toddler", "costume", "toy", "n
 
 def _ensure_cols():
     conn = sqlite3.connect(DB_PATH)
-    try:
-        conn.execute("ALTER TABLE watch_items ADD COLUMN alternatives TEXT")
-        conn.commit()
-    except Exception:
-        pass                                                     # already there
+    for col, typ in (("alternatives", "TEXT"), ("source", "TEXT"), ("radar_rate", "REAL"), ("radar_cls", "TEXT"),
+                     ("radar_prio", "REAL")):
+        try:
+            conn.execute(f"ALTER TABLE watch_items ADD COLUMN {col} {typ}")
+            conn.commit()
+        except Exception:
+            pass                                                 # already there
     conn.close()
 
 
@@ -181,10 +277,90 @@ def _set(item_id: str, status: str, note: str = "", listing_id: str = ""):
     if _DRY:                      # a dry run reports what it would do and changes nothing
         return
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("UPDATE watch_items SET status=?, note=?, listing_id=COALESCE(NULLIF(?,''), listing_id) WHERE item_id=?",
-                 (status, note[:300], listing_id, item_id))
+    conn.execute("UPDATE watch_items SET status=?, note=?, listing_id=COALESCE(NULLIF(?,''), listing_id), "
+                 "updated_at=? WHERE item_id=?",
+                 (status, note[:300], listing_id, time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), item_id))
     conn.commit()
     conn.close()
+
+
+class NoAI(Exception):
+    """No AI provider can write listing text (or listing is paused) - stop the batch, keep the items."""
+
+
+def _radar_listed_today() -> int:
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        day = time.strftime("%Y-%m-%d", time.gmtime())
+        return conn.execute("SELECT COUNT(*) FROM watch_items WHERE source='radar' AND status='listed' AND updated_at>=?",
+                            (day,)).fetchone()[0]
+    finally:
+        conn.close()
+
+
+def _process_radar(it: dict, why: str, dry: bool) -> str:
+    """List a product an eBay seller is MEASURED to sell fast, at (or just under) that seller's price."""
+    from deal_scan import _nice
+    ref = it.get("price") or 0.0                                 # buyer-facing total of the fast seller
+    if ref < 9:
+        _set(it["item_id"], "not_viable", f"price GBP {ref:.2f} too low")
+        return "price too low"
+    max_price = (ref - 0.36) / 1.0413                            # our price if we match them exactly
+    under = (ref * (1 - RADAR_UNDERCUT) - 0.36) / 1.0413         # our price if we go a little under them
+    max_cost = max_price - RADAR_MIN_PROFIT                      # most Amazon can cost (delivered)
+    pool: list = []
+    match, how = find_amazon_match(it, pool, max_cost)
+    if match and match["cost_gbp"] + match["shipping_gbp"] > max_cost:
+        dear = match["cost_gbp"] + match["shipping_gbp"]
+        match = None
+        how = f"DEAR: exact match costs GBP {dear:.2f} delivered, most we can pay is GBP {max_cost:.2f}"
+        if RADAR_EQUIV:
+            eq, how2 = best_equivalent(it, pool, max_cost)
+            if eq:
+                match, how = eq, how2
+    elif not match and RADAR_EQUIV:
+        match, how = best_equivalent(it, pool, max_cost)
+    if not match:
+        _set(it["item_id"], "not_viable" if how.startswith("DEAR") else "no_match", how)
+        return how
+    cost = match["cost_gbp"] + match["shipping_gbp"]
+    price = max(_nice(under, False), _nice(cost + RADAR_MIN_PROFIT, True))
+    keyword = " ".join(re.sub(r"[^A-Za-z0-9 ]", " ", it["title"]).split()[:6])
+    if dry:
+        return f"WOULD LIST {match['product_id']} Amazon GBP {cost:.2f} -> eBay GBP {price:.2f} ({how}; {why})"
+    if _radar_listed_today() >= RADAR_DAILY_LIST_CAP:
+        return "DEFER radar daily cap reached"
+
+    from seed_amazon import prepare, SeedSkip
+    try:
+        plan = prepare(match["product_id"], keyword, "any", price=price)
+    except SeedSkip as e:
+        _set(it["item_id"], "not_listed", str(e))
+        return f"not listed: {e}"
+    real = plan["shelf"] + plan["prod"]["shipping_gbp"] * (1 + VAT_RATE)   # real product-page price, delivered
+    if real + RADAR_MIN_PROFIT > max_price + 0.01:
+        note = f"product page GBP {real:.2f} delivered; can only sell at GBP {max_price:.2f}: under GBP {RADAR_MIN_PROFIT:.0f} profit"
+        _set(it["item_id"], "not_viable", note)
+        return note
+    if not same_numbers(it["title"], plan["prod"]["title"]):
+        _set(it["item_id"], "no_match", "product page title differs in size/pack count")
+        return "pack/size differs on product page"
+    price = max(price, _nice(real + RADAR_MIN_PROFIT, True))
+    import lister
+    from db import count_listings_today
+    lister.DAILY_LISTING_CAP = max(lister.DAILY_LISTING_CAP, count_listings_today() + 1)
+    if os.path.exists(lister._PAUSE_FLAG):
+        raise NoAI("listing is paused")
+    t0 = time.time()
+    listing_id = lister.create_listing(plan["opp"], plan["prod"], target_sell_price_gbp=price)
+    if listing_id:
+        _set(it["item_id"], "listed", f"{how}; {why}; Amazon GBP {real:.2f} -> eBay GBP {price:.2f}", str(listing_id))
+        return f"LISTED {match['product_id']} at GBP {price:.2f} (Amazon GBP {real:.2f}; {how}; {why})"
+    stamp = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".credit_alert")
+    if os.path.exists(stamp) and os.path.getmtime(stamp) >= t0 - 1:
+        raise NoAI("no AI provider available")
+    _set(it["item_id"], "not_listed", f"{match['product_id']}: listing refused (blocked brand, price floor or policy)")
+    return f"not listed ({match['product_id']}: refused)"
 
 
 def process_item(it: dict, dry: bool = False) -> str:
@@ -192,6 +368,8 @@ def process_item(it: dict, dry: bool = False) -> str:
     if not ok:
         _set(it["item_id"], "low_demand", why)
         return f"low demand ({why})"
+    if _is_radar(it):
+        return _process_radar(it, why, dry)
 
     match, how = find_amazon_match(it)
     if not match:
@@ -248,12 +426,32 @@ def process_item(it: dict, dry: bool = False) -> str:
 def process_watch_items(limit: int = 5, dry: bool = False) -> list[str]:
     global _DRY
     _DRY = dry
+    if not dry:
+        try:                                     # a growth run is using the browser: wait (never hold its lock)
+            import fcntl
+            fh = open("/tmp/growth.lock", "a")
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fh, fcntl.LOCK_UN)
+            except OSError:
+                log.info("growth run in progress - watch batch skipped")
+                return []
+            finally:
+                fh.close()
+        except ImportError:
+            pass
     try:
+        _ensure_cols()
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
+        if not dry:                              # rows a crashed batch left claimed
+            conn.execute("UPDATE watch_items SET status='new' WHERE status='processing' AND updated_at < ?",
+                         (time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(time.time() - 7200)),))
+            conn.commit()
         rows = conn.execute(
-            "SELECT * FROM watch_items WHERE status='new' ORDER BY COALESCE(sold_today,0) DESC, "
-            "COALESCE(watchers,0) DESC LIMIT ?", (limit,)).fetchall()
+            "SELECT * FROM watch_items WHERE status='new' ORDER BY (COALESCE(source,'')='radar') ASC, "
+            "COALESCE(radar_prio,0) DESC, COALESCE(sold_today,0) DESC, COALESCE(watchers,0) DESC LIMIT ?",
+            (limit,)).fetchall()
         conn.close()
     except Exception as e:                       # table not created yet (nothing captured)
         log.debug(f"no watch items: {e}")
@@ -262,8 +460,25 @@ def process_watch_items(limit: int = 5, dry: bool = False) -> list[str]:
     try:
         for r in rows:
             it = dict(r)
+            if time.time() < amazon_source._blocked_until:
+                out.append("Amazon is blocking - batch stopped, items kept")
+                break
+            if not dry:                          # claim the row so an overlapping batch cannot take it too
+                conn = sqlite3.connect(DB_PATH)
+                n = conn.execute("UPDATE watch_items SET status='processing', updated_at=? WHERE item_id=? AND status='new'",
+                                 (time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), it["item_id"])).rowcount
+                conn.commit()
+                conn.close()
+                if not n:
+                    continue
             try:
                 res = process_item(it, dry=dry)
+                if res.startswith("DEFER"):
+                    _set(it["item_id"], "new", "")
+            except (AmazonBlocked, NoAI) as e:
+                _set(it["item_id"], "new", "")
+                out.append(f"batch stopped ({type(e).__name__}: {e}) - items kept")
+                break
             except Exception as e:
                 _set(it["item_id"], "error", str(e))
                 res = f"error: {e}"
