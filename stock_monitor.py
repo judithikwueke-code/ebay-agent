@@ -331,7 +331,7 @@ def _amazon_monitor_run(fresh_minutes: int = 0):
     import amazon_source
     from amazon_source import check_amazon_listing, close as close_amazon
     from supplier import _calc_margin
-    from config import DEFAULT_LISTING_QUANTITY, VAT_RATE
+    from config import DEFAULT_LISTING_QUANTITY, VAT_RATE, quantity_for_price
 
     min_margin = float(os.getenv("AMAZON_MIN_MARGIN_PCT", "10"))
     started = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
@@ -425,7 +425,7 @@ def _amazon_monitor_run(fresh_minutes: int = 0):
                 else:
                     note(f"{reason} but eBay pause FAILED: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
             elif status != "active" and viable:
-                if _set_ebay_quantity(sku, DEFAULT_LISTING_QUANTITY):
+                if _set_ebay_quantity(sku, quantity_for_price(listed_price)):
                     _update_status(pid, "active")
                     note(f"Back in stock at GBP {res['price']:.2f}, re-enabled: {title[:50]}")
             time.sleep(random.uniform(2, 4))
@@ -473,7 +473,8 @@ def replenish_amazon_stock():
         except Exception:
             continue
         qty = offers[0].get("availableQuantity") if offers else None
-        if qty is not None and qty < target:
+        from config import quantity_for_price
+        if qty is not None and qty < min(target, quantity_for_price(listed)):    # dear items stay at their lower quantity
             low.append((pid, asin, title, listed, sku, qty))
     if not low:
         return
@@ -493,7 +494,8 @@ def replenish_amazon_stock():
             if res["price"] is None or _calc_margin(res["price"] / (1 + VAT_RATE), 0.0, listed or 0) < min_margin:
                 log.info(f"Replenish: {title[:40]} - Amazon price {res['price']} leaves no margin, left at {qty}")
                 continue
-            n = min(target, res.get("max_qty") or target)
+            from config import quantity_for_price
+            n = min(target, quantity_for_price(listed), res.get("max_qty") or target)
             if n > qty:
                 if _set_ebay_quantity(sku, n):
                     log.info(f"Replenish: {title[:40]} {qty} -> {n}")

@@ -16,7 +16,7 @@ from config import (
     EBAY_SELL_BASE, ANTHROPIC_API_KEY, get_user_token, get_app_token,
     EBAY_FULFILLMENT_POLICY_ID, EBAY_FURNITURE_FULFILLMENT_POLICY_ID, EBAY_CJ_FULFILLMENT_POLICY_ID,
     EBAY_PAYMENT_POLICY_ID, EBAY_RETURN_POLICY_ID, EBAY_MERCHANT_LOCATION_KEY,
-    DAILY_LISTING_CAP, CATEGORIES, VERO_BRANDS, MIN_NET_MARGIN_PCT, DEFAULT_LISTING_QUANTITY,
+    DAILY_LISTING_CAP, CATEGORIES, VERO_BRANDS, MIN_NET_MARGIN_PCT, DEFAULT_LISTING_QUANTITY, quantity_for_price,
     calculate_ebay_fees, total_cost_with_vat,
 )
 from db import insert_product, count_listings_today
@@ -443,7 +443,7 @@ def _update_offer(offer_id: str, sku: str, price_gbp: float, category_id: str,
         "sku": sku,
         "marketplaceId": "EBAY_GB",
         "format": "FIXED_PRICE",
-        "availableQuantity": DEFAULT_LISTING_QUANTITY,
+        "availableQuantity": quantity_for_price(price_gbp),
         "categoryId": category_id,
         "pricingSummary": {
             "price": {"value": str(round(price_gbp, 2)), "currency": "GBP"}
@@ -501,7 +501,7 @@ def _create_offer(sku: str, price_gbp: float, category_id: str, is_furniture: bo
         "sku": sku,
         "marketplaceId": "EBAY_GB",
         "format": "FIXED_PRICE",
-        "availableQuantity": DEFAULT_LISTING_QUANTITY,
+        "availableQuantity": quantity_for_price(price_gbp),
         "categoryId": category_id,
         "pricingSummary": {
             "price": {"value": str(round(price_gbp, 2)), "currency": "GBP"}
@@ -915,6 +915,14 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     )
 
     log.info(f"Listed successfully: eBay ID {listing_id} | '{title[:50]}'")
+    if quantity_for_price(sell_price) < DEFAULT_LISTING_QUANTITY:   # dear item: show fewer units (selling limit counts qty x price)
+        try:
+            for o in requests.get(f"{EBAY_SELL_BASE}/offer", headers=_sell_headers(), params={"sku": sku}, timeout=15).json().get("offers", []):
+                requests.post(f"{EBAY_SELL_BASE}/bulk_update_price_quantity", headers=_sell_headers(), timeout=20,
+                              json={"requests": [{"sku": sku, "offers": [{"offerId": o["offerId"],
+                                                                          "availableQuantity": quantity_for_price(sell_price)}]}]})
+        except Exception as e:
+            log.warning(f"Could not lower the quantity of '{title[:40]}' to {quantity_for_price(sell_price)}: {e}")
     try:
         from telegram_bot import alert_new_listing
         alert_new_listing(title, sell_price, supplier_match["margin_pct"],

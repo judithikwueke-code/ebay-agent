@@ -240,6 +240,18 @@ AMAZON_FREE_DELIVERY = os.getenv("AMAZON_FREE_DELIVERY", "0") == "1"
 # builds sales history (mirrors the listings/day ramp in main.py).
 DEFAULT_LISTING_QUANTITY = int(os.getenv("DEFAULT_LISTING_QUANTITY", "5"))
 
+
+def quantity_for_price(price) -> int:
+    """Units to show on a listing at this price. eBay's monthly selling limit (GBP 37,800 here) counts quantity x price of
+    everything listed PLUS what has already sold this month - 5 units of a GBP 296 hob uses as much of it as 74 of a GBP 20 item
+    and a full limit blocks every new listing and re-enabling (found 16 Nov 2026). Dear items therefore show fewer units."""
+    try:
+        p = float(price)
+    except (TypeError, ValueError):
+        return DEFAULT_LISTING_QUANTITY
+    tier = 5 if p <= 40 else 3 if p <= 100 else 2 if p <= 150 else 1
+    return max(1, min(DEFAULT_LISTING_QUANTITY, tier))
+
 # --- eBay fee model (UK) ---
 # Final value fee varies by category — some are flat %, some tiered by sale
 # amount. Source: eBay "Fees for sellers" page (full category table).
