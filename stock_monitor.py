@@ -34,12 +34,102 @@ _STOP = {
 }
 
 
-def _send_telegram(msg: str):
+def _send_telegram(msg: str) -> bool:
     try:
         from telegram_bot import _send        # retries 3x, checks Telegram's reply, adds the account label
-        _send(msg)
+        return bool(_send(msg))
     except Exception as e:
         log.warning(f"Telegram send failed: {e}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# The price check's notebook and its place in the queue for the browser
+# ---------------------------------------------------------------------------
+_AMAZON_COLS = ("amazon_price_now REAL", "amazon_in_stock INTEGER", "amazon_checked_at TEXT", "amazon_tried_at TEXT")
+_unkept = []        # notes the database would not take: still reported at the end of the run
+
+
+def _amazon_columns(conn):
+    """What the price check keeps in the database (added to an older database on first use): per product the last
+    reading - amazon_checked_at is when the page was last READ, amazon_tried_at when it was last opened, read or not -
+    and the notebook of changes it has made."""
+    have = {r[1] for r in conn.execute("PRAGMA table_info(products)")}
+    for col in _AMAZON_COLS:
+        if col.split()[0] not in have:
+            conn.execute(f"ALTER TABLE products ADD COLUMN {col}")
+    conn.execute(_NOTES_TABLE)
+    conn.commit()
+
+
+_NOTES_TABLE = ("CREATE TABLE IF NOT EXISTS monitor_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT, "
+                "product_id INTEGER, note TEXT, sent INTEGER DEFAULT 0)")
+
+
+def _keep_note(note: str, product_id=None):
+    """Write a change down the moment it is made. The notes used to live in memory until the end of the run, so a run
+    that was killed half-way (twice on 12 Nov 2026) left no record of the prices it had already changed."""
+    log.info(f"Amazon monitor: {note}")
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20)
+        conn.execute(_NOTES_TABLE)
+        conn.execute("INSERT INTO monitor_notes (at, product_id, note) VALUES (datetime('now'), ?, ?)", (product_id, note))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.warning(f"could not store the monitor note: {e}")
+        _unkept.append(note)
+
+
+def _report_notes(started: str = ""):
+    """Send every note not sent yet - this run's and those of a run that died before it could report - as one
+    message, and tick them off only once Telegram has taken it."""
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20)
+        rows = conn.execute("SELECT id, at, note FROM monitor_notes WHERE sent=0 ORDER BY id").fetchall()
+        conn.close()
+    except Exception as e:
+        log.warning(f"could not read the monitor notes: {e}")
+        rows = []
+    lines = [(f"[{at[5:16]} UTC, from a check that did not finish] " if started and at < started else "") + note
+             for _id, at, note in rows] + _unkept
+    if not lines:
+        return
+    changes = sum(1 for x in lines if "WARNING" not in x)
+    if not _send_telegram(f"AMAZON STOCK/PRICE - {changes} change(s):\n" + "\n".join("- " + x for x in lines)):
+        return                                   # kept as unsent: the next run reports them
+    del _unkept[:]
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20)
+        conn.executemany("UPDATE monitor_notes SET sent=1 WHERE id=?", [(r[0],) for r in rows])
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.warning(f"could not tick off the monitor notes: {e}")
+
+
+def _browser_lock(patience_min: int = 150):
+    """/tmp/growth.lock is how this agent's browser jobs keep out of each other's way - the server has memory for ONE
+    browser, and a second one got the price check killed half-way. The daily growth run holds the lock; watch batches
+    and the stock top-up stand aside while it is held; the price check waits for it and then holds it itself.
+    Returns the open lock file (close it to release), True where there is no such lock (not Linux), or None when the
+    lock was still taken after patience_min."""
+    try:
+        import fcntl
+        fh = open("/tmp/growth.lock", "a")
+    except (ImportError, OSError):
+        return True
+    for minute in range(patience_min + 1):
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fh
+        except OSError:
+            if minute == 0:
+                log.info("Amazon monitor: another browser job of this agent is running - waiting for it to finish")
+            if minute < patience_min:
+                time.sleep(60)
+    fh.close()
+    return None
 
 
 def _keywords(title: str) -> str:
@@ -212,55 +302,103 @@ def run_stock_monitor():
     run_amazon_monitor()
 
 
-def run_amazon_monitor():
+def run_amazon_monitor(fresh_minutes: int = 0):
     """
     Re-check every live Amazon-sourced listing in a browser. Amazon stock and price move
     constantly and there is no automatic fulfilment, so protect the account:
       - out of stock / page gone  -> eBay quantity 0 (status paused_oos) + alert
       - price rise leaves margin < AMAZON_MIN_MARGIN_PCT -> quantity 0 (paused_price) + alert
       - back in stock at a viable price -> quantity restored (status active) + alert
+    Listings are taken oldest attempt first, so a run that is cut short is carried on by the next one instead of
+    starting again at the same listings, and every change is written down as it is made (_keep_note).
+    fresh_minutes > 0 leaves out listings READ within that many minutes - for finishing an interrupted run by hand.
     """
+    lock = _browser_lock()
+    if lock is None:
+        _keep_note("WARNING: the Amazon price check did not run - another browser job of this agent was still going "
+                   "after 2.5 hours. Prices and stock were NOT checked this time.")
+        _report_notes()
+        return
+    try:
+        _amazon_monitor_run(fresh_minutes)
+    finally:
+        if lock is not True:
+            lock.close()
+
+
+def _amazon_monitor_run(fresh_minutes: int = 0):
     import hashlib
+    import amazon_source
     from amazon_source import check_amazon_listing, close as close_amazon
     from supplier import _calc_margin
     from config import DEFAULT_LISTING_QUANTITY, VAT_RATE
 
     min_margin = float(os.getenv("AMAZON_MIN_MARGIN_PCT", "10"))
-    conn = sqlite3.connect(DB_PATH)
+    started = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
+    conn = sqlite3.connect(DB_PATH, timeout=20)
+    _amazon_columns(conn)
+    fresh = "AND (amazon_checked_at IS NULL OR amazon_checked_at < datetime('now', ?)) " if fresh_minutes > 0 else ""
     rows = conn.execute(
         "SELECT id, supplier_product_id, title, listed_price_gbp, status, cost_gbp "
-        "FROM products WHERE supplier='amazon' AND status IN ('active','paused_oos','paused_price') ORDER BY id"
-    ).fetchall()
+        "FROM products WHERE supplier='amazon' AND status IN ('active','paused_oos','paused_price') " + fresh +
+        "ORDER BY COALESCE(amazon_tried_at, amazon_checked_at, ''), id",
+        (f"-{int(fresh_minutes)} minutes",) if fresh else ()).fetchall()
     conn.close()
     if not rows:
+        _report_notes(started)
         return
     log.info(f"Amazon monitor: checking {len(rows)} listing(s)")
 
     notes = []
+    unread = checked = waits = 0
+    stopped = False
     try:
         for pid, asin, title, listed_price, status, cost_exvat in rows:
             sku = hashlib.md5(f"amazon-{asin}".encode()).hexdigest()[:20]
+
+            def note(text, _pid=pid):
+                notes.append(text)
+                _keep_note(text, _pid)
+
             res = check_amazon_listing(asin)
+            while res.get("blocked") and waits < 2:
+                # Amazon has paused us. Giving up here would leave every remaining price unchecked until the next
+                # run six hours later - wait the pause out and carry on from this listing instead.
+                waits += 1
+                close_amazon()
+                pause = min(max(60.0, amazon_source._blocked_until - time.time() + 30), 35 * 60)
+                log.warning(f"Amazon monitor: robot check after {checked} listing(s) - waiting {pause / 60:.0f} min, then carrying on")
+                time.sleep(pause)
+                res = check_amazon_listing(asin)
             if res.get("blocked"):
                 log.warning("Amazon monitor stopped early - robot check")
+                stopped = True
                 break
+            checked += 1
+            _note_tried(pid)
             if res["in_stock"] is None:
+                unread += 1
+                if unread >= 15 and unread == checked:
+                    log.error("Amazon monitor: the first 15 pages could not be read - stopping this run")
+                    break
+                time.sleep(random.uniform(1, 2))
                 continue  # unreadable page - change nothing
+            _note_amazon(pid, res["price"], res["in_stock"])
             if res["in_stock"] and res["price"] is not None and status in ("active", "paused_price"):
-                new_price, note = _auto_reprice(pid, asin, title, listed_price, cost_exvat, res["price"], VAT_RATE)
+                new_price, why = _auto_reprice(pid, asin, title, listed_price, cost_exvat, res["price"], VAT_RATE)
                 if new_price:
                     if _set_ebay_price(sku, new_price):
-                        c2 = sqlite3.connect(DB_PATH)
+                        c2 = sqlite3.connect(DB_PATH, timeout=20)
                         c2.execute("UPDATE products SET listed_price_gbp=?, cost_gbp=? WHERE id=?",
                                    (new_price, round(res["price"] / (1 + VAT_RATE), 2), pid))
                         c2.commit()
                         c2.close()
                         listed_price = new_price          # the viability check below now uses the new price
-                        notes.append("Repriced: " + note)
+                        note("Repriced: " + why)
                     else:
-                        notes.append("Wanted to reprice but eBay refused: " + note)
-                elif note:
-                    notes.append(note)
+                        note("Wanted to reprice but eBay refused: " + why)
+                elif why:
+                    note(why)
             viable = res["in_stock"] and res["price"] is not None and (
                 _calc_margin(res["price"] / (1 + VAT_RATE), 0.0, listed_price or 0) >= min_margin  # shelf price is VAT-inclusive
             )
@@ -269,18 +407,26 @@ def run_amazon_monitor():
                 new_status = "paused_oos" if not res["in_stock"] else "paused_price"
                 if _set_ebay_quantity(sku, 0):
                     _update_status(pid, new_status)
-                    notes.append(f"Paused on eBay - {reason}: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
+                    note(f"Paused on eBay - {reason}: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
                 else:
-                    notes.append(f"{reason} but eBay pause FAILED: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
+                    note(f"{reason} but eBay pause FAILED: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
             elif status != "active" and viable:
                 if _set_ebay_quantity(sku, DEFAULT_LISTING_QUANTITY):
                     _update_status(pid, "active")
-                    notes.append(f"Back in stock at GBP {res['price']:.2f}, re-enabled: {title[:50]}")
+                    note(f"Back in stock at GBP {res['price']:.2f}, re-enabled: {title[:50]}")
             time.sleep(random.uniform(2, 4))
     finally:
         close_amazon()
-    if notes:
-        _send_telegram("AMAZON STOCK/PRICE: " + " || ".join(notes))
+    log.info(f"Amazon monitor: {checked - unread} of {len(rows)} page(s) read, {unread} unreadable, {len(notes)} change(s)")
+    if stopped:
+        cause = (f"{amazon_source.location_failed}, so the price check stopped" if amazon_source.location_failed
+                 else "Amazon blocked the price check")
+        _keep_note(f"WARNING: {cause} after {checked} of {len(rows)} listings, even after waiting twice. The other "
+                   f"{len(rows) - checked} were NOT checked this run; the next run starts with them.")
+    if unread > max(10, checked * 0.3):            # never again fail silently: unchecked prices are how a sale ends up at a loss
+        _keep_note(f"WARNING: {unread} of {len(rows)} Amazon pages could NOT be read this run, so those prices and stock "
+                   f"levels were not checked. Tell Claude if you see this twice in a row.")
+    _report_notes(started)
 
 
 def replenish_amazon_stock():
@@ -290,10 +436,14 @@ def replenish_amazon_stock():
     or the price has moved so far that the margin is gone.
     """
     import hashlib
+    import amazon_source
     from amazon_source import check_amazon_listing, close as close_amazon
     from supplier import _calc_margin
     from config import VAT_RATE
 
+    if amazon_source.busy_elsewhere():
+        log.info("Replenish: another browser job of this agent is running (price check / growth run) - skipped this hour")
+        return
     target = int(os.getenv("STOCK_TARGET", "5"))
     min_margin = float(os.getenv("AMAZON_MIN_MARGIN_PCT", "3"))
     conn = sqlite3.connect(DB_PATH)
@@ -338,6 +488,31 @@ def replenish_amazon_stock():
             time.sleep(random.uniform(2, 4))
     finally:
         close_amazon()
+
+
+def _note_amazon(product_id: int, price, in_stock):
+    """Remember what Amazon showed at this check (shelf price inc VAT, stock): the facts that offers to buyers and
+    price decisions are worked out from. Never raises."""
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20)
+        conn.execute("UPDATE products SET amazon_price_now=?, amazon_in_stock=?, amazon_checked_at=datetime('now') WHERE id=?",
+                     (price, 1 if in_stock else 0, product_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.warning(f"could not record the Amazon reading for product {product_id}: {e}")
+
+
+def _note_tried(product_id: int):
+    """Remember that this product's Amazon page was opened just now, read or not: the next run starts with the
+    listings whose last attempt is oldest, so one that keeps failing to load cannot hold the front of the queue."""
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20)
+        conn.execute("UPDATE products SET amazon_tried_at=datetime('now') WHERE id=?", (product_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        log.warning(f"could not record the Amazon attempt for product {product_id}: {e}")
 
 
 def _update_status(product_id: int, status: str):

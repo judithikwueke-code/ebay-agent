@@ -30,10 +30,38 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 LONDON = ZoneInfo("Europe/London")
 
 
+_TG_LIMIT = 3900        # Telegram refuses anything over 4,096 characters outright - and the whole notice was lost
+
+
+def _parts(msg: str, limit: int = _TG_LIMIT) -> list:
+    """Cut a long message into pieces Telegram accepts, at a natural break: a line end, the ' || ' between two
+    notes, or failing that a space."""
+    out = []
+    while len(msg) > limit:
+        cut = max(msg.rfind("\n", 0, limit), msg.rfind(" || ", 0, limit))
+        if cut < limit // 2:
+            cut = msg.rfind(" ", 0, limit)
+        if cut < limit // 2:
+            cut = limit
+        out.append(msg[:cut].rstrip())
+        msg = msg[cut:].lstrip(" |\n")
+    if msg.strip():
+        out.append(msg)
+    return out
+
+
 def _send(msg: str, silent: bool = False):
     label = os.getenv("ACCOUNT_LABEL")
     if label:                                     # which account's agent is talking
         msg = f"[{label}] " + msg
+    parts = _parts(msg) or [msg]
+    ok = True
+    for n, part in enumerate(parts, 1):
+        ok = _send_one(f"({n}/{len(parts)}) {part}" if len(parts) > 1 else part, silent) and ok
+    return ok
+
+
+def _send_one(msg: str, silent: bool = False):
     import time
     for attempt in range(1, 4):
         try:

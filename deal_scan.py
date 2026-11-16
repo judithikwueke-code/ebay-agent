@@ -40,13 +40,21 @@ def _nice(x: float, up: bool) -> float:
 def scrape_bestsellers(slug: str, limit: int = 40) -> list[dict]:
     if time.time() < amazon_source._blocked_until:
         return []
+    try:
+        return amazon_source.on_browser(_scrape_bestsellers, slug, limit)   # the browser lives on its own thread
+    except Exception as e:
+        log.warning(f"bestsellers/{slug} failed: {e}")
+        return []
+
+
+def _scrape_bestsellers(slug: str, limit: int = 40) -> list[dict]:
     out = []
     with amazon_source._lock:
         page = None
         try:
             page = amazon_source._get_context().new_page()
-            if not amazon_source._goto(page, f"https://www.amazon.co.uk/gp/bestsellers/{slug}/"):
-                return []
+            if not amazon_source._open(page, f"https://www.amazon.co.uk/gp/bestsellers/{slug}/"):
+                return []                        # blocked, or not showing UK delivery: a failed read
             for _ in range(4):  # lazy-loaded grid
                 page.mouse.wheel(0, 2500)
                 time.sleep(0.8)

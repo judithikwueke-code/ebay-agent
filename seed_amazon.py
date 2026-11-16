@@ -57,6 +57,13 @@ def prepare(url_or_asin: str, keyword: str, category: str = "", price: float | N
         raise SeedSkip(f"{asin}: could not read the Amazon page/price")
     if not prod["in_stock"]:
         raise SeedSkip(f"{asin}: not in stock on Amazon - skipping")
+    # The date Amazon really promises to the UK postcode (not a guess from a Prime badge): a listing that cannot be
+    # delivered in time is a cancelled order and a defect, however good the price. No date shown = no verdict here.
+    import os as _os
+    _max_days = int(_os.getenv("AMAZON_MAX_DELIVERY_DAYS", "7"))
+    if prod.get("delivery_date") and prod.get("delivery_days") is not None and prod["delivery_days"] > _max_days:
+        raise SeedSkip(f"{asin}: Amazon delivery is {prod['delivery_date']} ({prod['delivery_days']} days away, "
+                       f"limit {_max_days}) - skipping")
     if _is_vero(prod["title"]) or _is_policy_blocked(prod["title"]):
         raise SeedSkip(f"{asin}: brand/policy block on '{prod['title'][:60]}' - skipping")
 
@@ -73,6 +80,8 @@ def prepare(url_or_asin: str, keyword: str, category: str = "", price: float | N
     snap = _market_snapshot(keyword, cat["id"], cat.get("min_price", 5.0), cat.get("max_price", 400.0))
     market = snap["avg_price_gbp"]
     if not market:
+        if snap.get("failed"):                     # API allowance used up / time-out: not a verdict on the product
+            raise SeedSkip(f"'{keyword}': eBay market lookup failed - try again later")
         raise SeedSkip(f"'{keyword}': no eBay market data - skipping")
 
     min_price = _min_viable_price(prod["cost_gbp"], prod["shipping_gbp"], fee_key)

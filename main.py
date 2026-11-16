@@ -313,14 +313,17 @@ def main():
         replace_existing=True,
     )
 
-    # Stock monitor: every 6 hours
+    # Stock/price monitor: four fixed times a day. It used to run "every 6 hours counted from the last restart", so
+    # every restart of the service put the next price check off by six hours. These times keep clear of the daily
+    # growth run (08:30 UTC), which needs the server's one browser for itself.
     scheduler.add_job(
         run_stock_monitor,
-        IntervalTrigger(hours=6),
+        CronTrigger(hour="0,5,12,19", minute=10, timezone="UTC"),
         id="stock_monitor",
         name="Stock Monitor",
         replace_existing=True,
         misfire_grace_time=3600,
+        coalesce=True,
     )
 
     # CJ catalogue sweep: 10am, 2pm, 8pm — pages through all 10k+ UK products

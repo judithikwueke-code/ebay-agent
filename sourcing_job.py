@@ -116,17 +116,22 @@ def page_info(url: str, html) -> dict:
     if not title or blocked(title):
         try:                                     # render it like a browser (shares the Amazon browser profile)
             import amazon_source
-            page = amazon_source._get_context().new_page()
-            try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                page.wait_for_timeout(2500)
-                title = page.title()
-                desc = desc or page.evaluate("document.querySelector('meta[name=description]')?.content || ''")
-                image = image or page.evaluate("document.querySelector('meta[property=\"og:image\"]')?.content || ''")
-                body = page.evaluate("document.body.innerText.slice(0, 1500)")
-                desc = (desc + " " + body).strip()
-            finally:
-                page.close()
+
+            def _render():
+                page = amazon_source._get_context().new_page()
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    page.wait_for_timeout(2500)
+                    return (page.title(),
+                            page.evaluate("document.querySelector('meta[name=description]')?.content || ''"),
+                            page.evaluate("document.querySelector('meta[property=\"og:image\"]')?.content || ''"),
+                            page.evaluate("document.body.innerText.slice(0, 1500)"))
+                finally:
+                    page.close()
+
+            title, d2, i2, body = amazon_source.on_browser(_render)      # the browser lives on its own thread
+            desc = ((desc or d2) + " " + body).strip()
+            image = image or i2
         except Exception as e:
             log.warning(f"browser fallback failed for {url[:80]}: {e}")
     return {"title": title, "description": desc[:1500], "price": price, "image": image, "url": url}

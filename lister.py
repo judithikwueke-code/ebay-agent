@@ -143,12 +143,38 @@ def clean_text(text: str) -> str:
     return text
 
 
+_DANGLING = {"with", "for", "and", "the", "a", "an", "of", "in", "to", "by", "on", "or", "ideal", "includes", "including",
+             "from", "at", "as", "suitable", "perfect", "great", ""}
+
+
 def clean_title(title: str) -> str:
-    """Plain-ASCII punctuation, collapsed spaces, first letter capitalised, hard limit 80 chars cut at a word boundary."""
+    """Plain-ASCII punctuation, collapsed spaces, first letter capitalised, at most 80 characters. A longer title is
+    cut at a word boundary and never left ending on words that lead nowhere ('... Storage Box Ideal for', '... Lights
+    with', '... Set (Pack of')."""
     t = " ".join(clean_text(title).split())
     if len(t) > 80:
-        t = t[:80].rsplit(" ", 1)[0]
+        t = t[:80] if t[80] == " " else t[:80].rsplit(" ", 1)[0]
+        if t.count("(") > t.count(")"):                    # a bracket the cut left open: drop what is in it
+            t = t[:t.rfind("(")]
+        words = t.split()
+        while len(words) > 3 and words[-1].strip(",;:-|&+/").lower() in _DANGLING:
+            words.pop()
+        t = " ".join(words).rstrip(" ,;:-|&+/")
     return t[:1].upper() + t[1:]
+
+
+def _strip_words(title: str, description: str, words) -> tuple[str, str]:
+    """Remove names that must not appear on this product (another seller's brand) from the title and description."""
+    for w in words or []:
+        w = (w or "").strip()
+        if len(w) < 2:
+            continue
+        pat = re.compile(rf"(?<![A-Za-z0-9]){re.escape(w)}(?![A-Za-z0-9])", re.I)
+        if pat.search(title) or pat.search(description):
+            log.warning(f"Removed '{w}' from the listing text - it is not this product's brand")
+            title = " ".join(pat.sub(" ", title).split()).strip(" -,|")
+            description = pat.sub("", description)
+    return title, description
 
 
 def _generate_listing_content(keyword: str, supplier_title: str, description: str, category: str,
@@ -197,6 +223,20 @@ Supplier description: {description[:500] if description else 'Not provided'}
 - BANNED words (eBay policy + wasted space): "new", "free", "best",
   "high quality", "amazing", "great", "stunning", "gorgeous", "perfect",
   ALL CAPS words, symbols (!, *, #).
+- TRUTH RULE (overrides every rule above): the listing must describe exactly
+  the product in the "Product:" line - what the buyer will receive.
+  * Brand names: use a brand name ONLY if it appears in the "Product:" line.
+    NEVER copy a brand name from the search keyword or from the competitor
+    titles (they may be selling another make) - leave it out instead.
+  * Never call the item a "genuine", "original", "official" or "authentic"
+    branded product.
+  * Size, capacity, length, quantity and colour must be the ones in the
+    "Product:" line / supplier description. Do not borrow a size, a pack
+    count or a claim ("large", "heavy duty", "fireproof", "waterproof")
+    that the product information does not state.
+  * If the search keyword describes a different kind of item than the
+    product (e.g. keyword is a remote control, product is a case for it),
+    describe the product, not the keyword.
 
 === DESCRIPTION RULES (150–250 words, HTML) ===
 - First sentence must contain the exact primary keyword phrase from the
@@ -212,8 +252,13 @@ Supplier description: {description[:500] if description else 'Not provided'}
 - No invented specs, no fabricated certifications, no false urgency
   ("only 2 left!") — these are policy violations and trust risks.
 
+=== TYPE ===
+- "type": what the product IS in 1-3 words, as a shopper would name it
+  (e.g. "Cat Litter", "Electric Blanket", "Door Security Lock") - no brand,
+  no size, no colour.
+
 Respond in JSON exactly:
-{{"title": "...", "description": "..."}}"""
+{{"title": "...", "description": "...", "type": "..."}}"""
 
     from llm import complete as _llm_complete          # Claude first, automatic Groq fallback
     text = _llm_complete(prompt, 600, model="claude-sonnet-4-6").strip()
@@ -231,7 +276,68 @@ Respond in JSON exactly:
         for word in _banned:
             fallback_title = re.sub(rf'\b{re.escape(word)}\b', '', fallback_title, flags=re.IGNORECASE).strip()
         fallback_title = " ".join(fallback_title.split())  # collapse multiple spaces
-        return {"title": fallback_title[:80], "description": description or supplier_title}
+        return {"title": clean_title(fallback_title), "description": description or supplier_title}
+
+
+_UNITS = {"m": "m", "metre": "m", "metres": "m", "meter": "m", "meters": "m", "mtr": "m", "cm": "cm", "mm": "mm",
+          "in": "in", "inch": "in", "inches": "in", "ft": "ft", "feet": "ft", "foot": "ft",
+          "l": "l", "litre": "l", "litres": "l", "liter": "l", "liters": "l", "ltr": "l", "ml": "ml",
+          "kg": "kg", "kgs": "kg", "g": "g", "gram": "g", "grams": "g", "w": "w", "watt": "w", "watts": "w",
+          "v": "v", "volt": "v", "volts": "v", "led": "led", "leds": "led", "tog": "tog", "mah": "mah",
+          "pack": "pk", "packs": "pk", "pk": "pk", "pcs": "pk", "pc": "pk", "piece": "pk", "pieces": "pk", "x": "pk"}
+
+
+def _measures(text: str) -> set:
+    """(number, unit) pairs in a text: '10M 100 LED' -> {('10', 'm'), ('100', 'led')}; no known unit after it -> (n, '')."""
+    out = set()
+    for m in re.finditer(r"(\d+(?:[.,]\d+)?)\s?([A-Za-z]+)?", text or ""):
+        n = m.group(1).replace(",", "")
+        if "." in n:
+            n = n.rstrip("0").rstrip(".")
+        out.add((n, _UNITS.get((m.group(2) or "").lower(), "")))
+    return out
+
+
+def unsupported_measures(title: str, facts: str) -> list[str]:
+    """Sizes/quantities a title states that the product information does not: '100m' on lights that are 10m with
+    100 LEDs, '75cm' on a mattress cover that is 75 INCHES long. A number is fine when the product information has it
+    with the same unit, or with no recognised unit at all."""
+    have = _measures(facts)
+    nums = {n for n, _ in have}
+    return [f"{n}{u}" for n, u in sorted(_measures(title))
+            if n not in nums or (u and u != "pk" and (n, u) not in have and (n, "") not in have)]
+
+
+def write_listing_text(keyword: str, supplier_title: str, description: str, category: str,
+                       competitor_titles: list[str] | None = None, avg_price_gbp: float | None = None,
+                       our_price_gbp: float | None = None) -> dict:
+    """Title + description (+ product type) that state only the sizes and quantities the product information states.
+    A title that fails the check is written once more; failing again, the supplier's own title is used."""
+    facts = f"{supplier_title} {description or ''}"
+    content: dict = {}
+    for attempt in (1, 2):
+        content = _generate_listing_content(keyword, supplier_title, description, category,
+                                            competitor_titles=competitor_titles, avg_price_gbp=avg_price_gbp,
+                                            our_price_gbp=our_price_gbp)
+        bad = unsupported_measures(clean_title(content.get("title") or ""), facts)
+        if not bad:
+            return content
+        log.warning(f"Title states {', '.join(bad)} which the product information does not (attempt {attempt}): "
+                    f"'{content.get('title')}'")
+    content["title"] = supplier_title
+    return content
+
+
+def product_type(content: dict, keyword: str, not_words=None) -> str:
+    """The 'Type' item specific: the AI's 1-3 word name for the product, else the keyword's leading words."""
+    skip = {"and", "or", "for", "with", "in", "of", "set", "sets", "the", "a", "an"}
+    t = " ".join(re.sub(r"[^A-Za-z0-9 &-]", " ", str(content.get("type") or "")).split())
+    for w in not_words or []:
+        if w and len(w) >= 2:
+            t = " ".join(re.sub(rf"(?<![A-Za-z0-9]){re.escape(w)}(?![A-Za-z0-9])", " ", t, flags=re.I).split())
+    if not (2 <= len(t) <= 40) or len(t.split()) > 4 or re.search(r"\d", t):
+        t = " ".join(w.capitalize() for w in keyword.replace("-", " ").split()[:3] if w.lower() not in skip)
+    return t
 
 
 # ---------------------------------------------------------------------------
@@ -558,6 +664,8 @@ def _fill_required_aspects(category_id: str, aspects: dict, title: str) -> dict:
             pick = next((x for x in allowed if x.lower() in ("does not apply", "not applicable")), None)
         if not pick and c.get("aspectMode") == "FREE_TEXT":
             pick = "Does Not Apply"
+        if not pick and name == "Power Source":                  # a powered-goods category that insists on one
+            pick = next((x for x in allowed if x.lower() == "battery"), None)
         if pick:
             aspects[name] = [pick]
             log.info(f"Filled required item specific {name} = {pick}")
@@ -633,7 +741,7 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
         # hand-written title + description (own-stock listings): no Claude call needed
         content = {"title": supplier_match["title_override"], "description": supplier_match["description_override"]}
     try:
-        content = content or _generate_listing_content(
+        content = content or (_generate_listing_content if supplier_match.get("title_override") else write_listing_text)(
             keyword,
             supplier_title,
             supplier_match.get("description", ""),
@@ -664,6 +772,7 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     description = _re_mhra.sub(r"[^.<>]*(?:MHRA|Medicines and Healthcare products Regulatory Agency)[^.<>]*\.?", "", description)
     if supplier_match.get("title_override"):          # user-specified exact title (own-stock listings)
         title = supplier_match["title_override"][:80]
+    title, description = _strip_words(title, description, opportunity.get("not_brands"))
 
     # VeRO check 2: Claude-generated title (catches brand mentions introduced by LLM)
     if _vero_blocked(title):
@@ -712,11 +821,9 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     # Furniture sets it explicitly in _build_aspects; for everything else derive
     # it from the keyword so the field is always present.
     if "Type" not in aspects:
-        _skip_words = {"and", "or", "for", "with", "in", "of", "set", "sets", "the", "a", "an"}
-        type_words = [w.capitalize() for w in keyword.replace("-", " ").split()[:3]
-                      if w.lower() not in _skip_words]
-        if type_words:
-            aspects["Type"] = [" ".join(type_words)]
+        _type = product_type(content, keyword, opportunity.get("not_brands"))
+        if _type:
+            aspects["Type"] = [_type]
     # Real brand/model read from the supplier page (e.g. Amazon's brand line) win over the defaults below.
     for _k, _v in (supplier_match.get("aspects") or {}).items():
         if _v:
@@ -726,13 +833,13 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     if "Model" not in aspects:
         aspects["Model"] = ["Does Not Apply"]
     if "Power Source" not in aspects:
-        kw_lower = keyword.lower()
+        kw_lower = f"{keyword} {supplier_title}".lower()
         if any(w in kw_lower for w in ("cordless", "rechargeable", "wireless", "battery")):
             aspects["Power Source"] = ["Battery"]
-        elif any(w in kw_lower for w in ("electric", "corded", "plug")):
+        elif any(w in kw_lower for w in ("electric", "corded", "plug", "mains")):
             aspects["Power Source"] = ["Corded Electric"]
-        else:
-            aspects["Power Source"] = ["Battery"]
+        # anything else states no power source ("Power Source: Battery" on cat litter is simply untrue);
+        # where eBay insists on one, _fill_required_aspects supplies it
     if "Manufacturer Part Number" not in aspects:
         aspects["Manufacturer Part Number"] = ["Does Not Apply"]
 
