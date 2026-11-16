@@ -211,6 +211,19 @@ def research_and_list(dry_run: bool = False, opportunities: list | None = None, 
                          f"cost £{delivered:.2f} - the market prices are probably for a different product - skip")
                 continue
 
+        # Delivery date (16 Nov 2026): Amazon's REAL promised date for this product, not the old guess from a Prime badge. A stove
+        # with a January date was listed this way and sold. Nothing that arrives later than AMAZON_MAX_DELIVERY_DAYS is listed.
+        if match.get("supplier") == "amazon" and not dry_run:
+            try:
+                import amazon_source
+                _p = amazon_source.get_product(match["product_id"])
+                _max = int(os.getenv("AMAZON_MAX_DELIVERY_DAYS", "7"))
+                if _p and _p.get("delivery_date") and _p.get("delivery_days") is not None and _p["delivery_days"] > _max:
+                    log.info(f"Delivery FAIL '{opp['keyword']}': Amazon delivers {_p['delivery_date']} ({_p['delivery_days']} days) - skip")
+                    continue
+            except Exception as e:
+                log.warning(f"Delivery date check failed for '{opp['keyword']}': {e}")
+
         listing_id = create_listing(opp, match, dry_run=dry_run,
                                      target_sell_price_gbp=target_price)
         if listing_id:

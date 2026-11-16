@@ -88,7 +88,7 @@ def report(rtype, dims, metrics, days=3):
         if time.time() > DEADLINE[0]:
             return None, f"eBay had not finished building this report yet (still {status}) - it will be ready later; ask me to read it"
         time.sleep(15)
-    d = requests.get(f"{B}/ad_report/{tid}", headers=H, timeout=60)
+    d = requests.get(f"{B}/ad_report/{t.get('reportId') or tid}", headers=H, timeout=60)   # the REPORT id, not the task id (eBay's href is internal)
     if d.status_code != 200:
         return None, f"could not download the report: {d.status_code} {d.text[:150]}"
     try:
