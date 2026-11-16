@@ -27,9 +27,11 @@ if PREMIUM:
     # High-ticket mode (e.g. portable saunas, walking pads, hot tubs): eBay price window GBP 40-450, fewer weekly sales are
     # enough (these sell slower but earn much more per sale) and every listing must clear a real profit (GBP 8 at the
     # cheapest-quarter price), not the usual GBP 2. Set BEFORE research/config import (module-level constants).
-    os.environ["RESEARCH_PRICE_BAND"] = "40-450"
-    os.environ["DEMAND_MIN_SOLD_PER_WEEK"] = "1.5"
-    os.environ["MIN_PROFIT_AT_P25"] = "8"
+    # The window and the profit floor can be raised for a run (PREMIUM_BAND="80-450", PREMIUM_MIN_PROFIT=15): the owner's
+    # profit-per-day target needs few, high-earning sales, not many small ones.
+    os.environ["RESEARCH_PRICE_BAND"] = os.getenv("PREMIUM_BAND", "40-450")
+    os.environ["DEMAND_MIN_SOLD_PER_WEEK"] = os.getenv("PREMIUM_MIN_SOLD", "1.5")
+    os.environ["MIN_PROFIT_AT_P25"] = os.getenv("PREMIUM_MIN_PROFIT", "8")
 from dotenv import load_dotenv
 
 load_dotenv()
