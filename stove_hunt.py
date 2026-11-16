@@ -52,10 +52,18 @@ from seed_amazon import prepare, SeedSkip  # noqa: E402
 from db import count_listings_today  # noqa: E402
 import lister  # noqa: E402
 
+IGNORE_MARKET = "--ignore-market" in sys.argv      # owner's call: price for the profit, whatever other sellers charge
+PRIME_ONLY = "--prime-only" in sys.argv             # the page itself must show the Prime badge
+ONLY = {}                                           # --only ASIN:keyword:amazon price,...  (skip the search, read just these)
+if "--only" in sys.argv:
+    for part in sys.argv[sys.argv.index("--only") + 1].split(","):
+        asin_, kw_, price_ = part.split(":")
+        ONLY[asin_] = {"product_id": asin_, "title": kw_, "cost_gbp": float(price_), "kw": kw_, "delivery_days": 3}
+
 found, rows = {}, []
 t0 = time.time()
 try:
-    for kw in KEYWORDS:
+    for kw in ([] if ONLY else KEYWORDS):
         res = a.search_amazon(kw, 400, limit=12, strict=False, min_reviews=30)
         n_new = 0
         for c in res:
@@ -66,12 +74,13 @@ try:
             n_new += 1
         print(f"search '{kw}': {len(res)} result(s), {n_new} new", flush=True)
         time.sleep(1.5)
+    found.update(ONLY)
     cards_prime = sum(1 for v in found.values() if v["delivery_days"] == 3)   # 3 = the Prime badge showed on the card
     print(f"\n{len(found)} distinct products, {cards_prime} with a Prime badge on the search card "
           f"(the product page decides below)", flush=True)
     todo = []
     for asin, c in found.items():
-        if NOT_A_STOVE.search(c["title"]) or not re.search(r"\bstoves?\b|\bcookers?\b|\bburner\b", c["title"], re.I):
+        if not ONLY and (NOT_A_STOVE.search(c["title"]) or not re.search(r"\bstoves?\b|\bcookers?\b|\bburner\b", c["title"], re.I)):
             rows.append(dict(asin=asin, title=c["title"][:70], verdict="skip", why="not a stove (accessory / other product)"))
             continue
         todo.append((asin, c))
@@ -99,11 +108,13 @@ try:
         row["prime_badge"] = prod.get("prime")
         if not prod.get("delivery_date"):
             row.update(verdict="skip", why="Amazon shows no delivery date on the page")
+        elif PRIME_ONLY and not prod.get("prime"):
+            row.update(verdict="skip", why="no Prime badge on the product page")
         elif not fast:
             row.update(verdict="skip", why="not Prime and no free delivery on the product page")
         elif profit < MIN_PROFIT - 0.005:
             row.update(verdict="skip", why=f"profit GBP {profit:.2f}")
-        elif price > market * MAX_ABOVE_MARKET:
+        elif not IGNORE_MARKET and price > market * MAX_ABOVE_MARKET:
             row.update(verdict="skip", why=f"GBP {price:.2f} needed for GBP {MIN_PROFIT:.0f} profit, eBay average is GBP {market:.2f}")
         else:
             row.update(verdict="OK", why="qualifies")
