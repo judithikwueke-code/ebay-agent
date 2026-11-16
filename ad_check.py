@@ -53,7 +53,11 @@ def position():
         out(f"  '{q}': {'position ' + str(pos) if pos else 'not in the first ' + str(len(res))} of {len(res)} results")
 
 
-def report(rtype, dims, metrics, days=3):
+ASKED = {}                      # report type -> (task id, error): all reports are requested together, then collected
+DEADLINE = [0.0]                # one shared time limit for waiting on eBay's reports
+
+
+def ask(rtype, dims, metrics, days=3):
     now = datetime.datetime.now(datetime.timezone.utc)
     body = {"campaignIds": [CAMPAIGN], "marketplaceId": "EBAY_GB", "reportType": rtype, "reportFormat": "TSV_GZIP",
             "dateFrom": (now - datetime.timedelta(days=days)).strftime("%Y-%m-%dT00:00:00.000Z"),
@@ -62,17 +66,28 @@ def report(rtype, dims, metrics, days=3):
             "metricKeys": metrics, "dimensions": [{"dimensionKey": d} for d in dims]}
     r = requests.post(f"{B}/ad_report_task", headers=H, json=body, timeout=30)
     if r.status_code not in (200, 201, 202):               # 202 = accepted, the report is being built
-        return None, f"could not ask for the report: {r.status_code} {r.text[:200]}"
-    tid = (r.headers.get("Location") or "").rstrip("/").split("/")[-1]
-    for _ in range(30):
-        t = requests.get(f"{B}/ad_report_task/{tid}", headers=H, timeout=30).json()
-        if t.get("reportTaskStatus") == "SUCCESS":
-            break
-        if t.get("reportTaskStatus") in ("FAILED", "ERROR"):
-            return None, f"report failed: {t}"
-        time.sleep(4)
+        ASKED[rtype] = (None, f"could not ask for the report: {r.status_code} {r.text[:200]}")
     else:
-        return None, "report not ready in time"
+        ASKED[rtype] = ((r.headers.get("Location") or "").rstrip("/").split("/")[-1], None)
+
+
+def report(rtype, dims, metrics, days=3):
+    if rtype not in ASKED:
+        ask(rtype, dims, metrics, days)
+    tid, err = ASKED[rtype]
+    if err:
+        return None, err
+    status = None
+    while True:
+        t = requests.get(f"{B}/ad_report_task/{tid}", headers=H, timeout=30).json()
+        status = t.get("reportTaskStatus")
+        if status == "SUCCESS":
+            break
+        if status in ("FAILED", "ERROR"):
+            return None, f"report failed: {t}"
+        if time.time() > DEADLINE[0]:
+            return None, f"eBay had not finished building this report yet (still {status}) - it will be ready later; ask me to read it"
+        time.sleep(15)
     d = requests.get(f"{B}/ad_report/{tid}", headers=H, timeout=60)
     if d.status_code != 200:
         return None, f"could not download the report: {d.status_code} {d.text[:150]}"
@@ -90,6 +105,10 @@ def campaign():
     kws = requests.get(f"{B}/ad_campaign/{CAMPAIGN}/keyword", headers=H, timeout=20).json().get("keywords", [])
     names = {k["keywordId"]: f"{k['keywordText']} ({k['matchType'].lower()})" for k in kws}
     metrics = ["cpc_impressions", "cpc_clicks", "cpc_ctr", "cpc_ad_fees_listingsite_currency", "cpc_attributed_sales"]
+    DEADLINE[0] = time.time() + 22 * 60                  # eBay's reports can take many minutes: ask for all three, wait together
+    ask("CAMPAIGN_PERFORMANCE_SUMMARY_REPORT", ["day", "campaign_id", "ad_group_id"], metrics)
+    ask("KEYWORD_PERFORMANCE_REPORT", ["seller_keyword_id", "campaign_id", "ad_group_id", "keyword_match_type"], metrics)
+    ask("SEARCH_QUERY_PERFORMANCE_REPORT", ["search_query", "campaign_id", "ad_group_id"], metrics)
     rows, err = report("CAMPAIGN_PERFORMANCE_SUMMARY_REPORT", ["day", "campaign_id", "ad_group_id"], metrics)
     out("\nCAMPAIGN TOTALS BY DAY (eBay's click charges can take up to 72 hours to show)")
     if err:
