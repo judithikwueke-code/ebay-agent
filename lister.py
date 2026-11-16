@@ -140,6 +140,8 @@ def clean_text(text: str) -> str:
     """Replace look-alike Unicode punctuation (non-breaking hyphens, smart quotes...) that LLMs emit and eBay search can't match."""
     for bad, good in _PUNCT.items():
         text = text.replace(bad, good)
+    # Nothing on the eBay account may point at where the stock comes from: 'works with Amazon Alexa' -> 'works with Alexa'
+    text = re.sub(r"\bAmazon\s+(Alexa|Echo|Fire|Kindle)\b", r"\1", text, flags=re.I)
     return text
 
 
