@@ -199,6 +199,18 @@ def research_and_list(dry_run: bool = False, opportunities: list | None = None, 
                 log.info(f"Price cap: '{opp['keyword']}' £{target_price} -> £{capped} (cost x{PRICE_CAP_MARKUP})")
             target_price = capped
 
+        # Price sanity (16 Nov 2026): a price far above what the product costs us means the eBay 'market' numbers belong to
+        # other, dearer products (a GBP 8 jump rope was priced at GBP 85, a GBP 12 cooling mat at GBP 88). Such a listing
+        # never sells and is not the high-value item it pretends to be - skip it rather than list it.
+        if target_price is not None and not is_furniture:
+            from config import total_cost_with_vat as _tcv
+            delivered = _tcv(match["cost_gbp"], match["shipping_gbp"])
+            mult = float(os.getenv("PRICE_SANITY_MULT", "2.5"))
+            if delivered > 0 and target_price > max(delivered * mult, delivered + 15):
+                log.info(f"Price sanity FAIL '{opp['keyword']}': £{target_price:.2f} is {target_price / delivered:.1f}x our delivered "
+                         f"cost £{delivered:.2f} - the market prices are probably for a different product - skip")
+                continue
+
         listing_id = create_listing(opp, match, dry_run=dry_run,
                                      target_sell_price_gbp=target_price)
         if listing_id:
