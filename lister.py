@@ -730,6 +730,15 @@ def create_listing(opportunity: dict, supplier_match: dict, dry_run: bool = Fals
     else:
         sell_price = min_sell_price
 
+    # The margin that is stored and sent in the 'NEW LISTING LIVE' alert is the one at the price we actually list - not the
+    # one at the market average that the price was chosen against (a GBP 10-profit hob looked like -85%) - and after the ad fee.
+    try:
+        from supplier import _calc_margin
+        _ad_pct = float(os.getenv("PROMOTE_RATE", "2.0")) * 1.2 if os.getenv("PROMOTE_CAMPAIGN_ID") else 0.0
+        supplier_match["margin_pct"] = round(_calc_margin(cost, shipping, sell_price, fee_key) - _ad_pct, 2)
+    except Exception as e:
+        log.warning(f"Could not work out the margin at the listed price: {e}")
+
     # New accounts: don't list below £12 — low-price items attract SNAD cases
     # that hit defect rate hard before any feedback is built up.
     if sell_price < MIN_LISTING_PRICE_GBP and not is_furniture and not supplier_match.get("own_stock"):
