@@ -399,12 +399,26 @@ def _amazon_monitor_run(fresh_minutes: int = 0):
                         note("Wanted to reprice but eBay refused: " + why)
                 elif why:
                     note(why)
+            if (res["in_stock"] and res["price"] is not None and status == "paused_price" and listed_price
+                    and _calc_margin(res["price"] / (1 + VAT_RATE), 0.0, listed_price) < min_margin):
+                floor = _price_for_profit(res["price"])      # still too cheap for Amazon's price: raise it (never lower)
+                if floor > listed_price + 0.01 and _set_ebay_price(sku, floor):
+                    c2 = sqlite3.connect(DB_PATH, timeout=20)
+                    c2.execute("UPDATE products SET listed_price_gbp=?, cost_gbp=? WHERE id=?",
+                               (floor, round(res["price"] / (1 + VAT_RATE), 2), pid))
+                    c2.commit()
+                    c2.close()
+                    note(f"Repriced to bring the profit back: eBay price £{listed_price:.2f} -> £{floor:.2f} "
+                         f"(Amazon £{res['price']:.2f}) | {title[:50]}")
+                    listed_price = floor
             viable = res["in_stock"] and res["price"] is not None and (
                 _calc_margin(res["price"] / (1 + VAT_RATE), 0.0, listed_price or 0) >= min_margin  # shelf price is VAT-inclusive
             )
-            if status == "active" and not viable:
-                reason = "OUT OF STOCK / gone" if not res["in_stock"] else f"price now £{res['price']:.2f} (margin too low)"
-                new_status = "paused_oos" if not res["in_stock"] else "paused_price"
+            # OWNER'S RULE: a listing is taken off sale ONLY when Amazon has none to send. A price is never a reason to pause
+            # (the price was raised above; if eBay refused that, the next run tries again).
+            if status == "active" and not res["in_stock"]:
+                reason = "OUT OF STOCK / gone"
+                new_status = "paused_oos"
                 if _set_ebay_quantity(sku, 0):
                     _update_status(pid, new_status)
                     note(f"Paused on eBay - {reason}: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
@@ -544,6 +558,16 @@ def _set_ebay_price(sku: str, price: float) -> bool:
         return False
 
 
+def _price_for_profit(amazon_shelf: float, min_profit: float | None = None) -> float:
+    """The lowest .49/.99 eBay price that still leaves `min_profit` (default GBP 3) after the fees, for Amazon's shelf price."""
+    min_profit = float(os.getenv("AMAZON_RAISE_MIN_PROFIT", "3")) if min_profit is None else min_profit
+    ad = float(os.getenv("PROMOTE_RATE", "2.0")) / 100 * 1.2 if os.getenv("PROMOTE_CAMPAIGN_ID") else 0.0
+    fee = ad + (0.0 if os.getenv("EBAY_NO_SELLER_FEES") == "1" else 0.15)
+    x = (amazon_shelf + min_profit) / (1 - fee)
+    base = int(x)
+    return round(min(p for p in (base + d for d in (-0.01, 0.49, 0.99, 1.49, 1.99)) if p >= x - 1e-9), 2)
+
+
 def _auto_reprice(pid, asin, title, listed_price, cost_exvat, amazon_shelf, vat_rate):
     """
     Amazon's price rose -> raise the eBay price by the same amount (grossed up for the eBay/ad fee that is taken as a
@@ -559,16 +583,17 @@ def _auto_reprice(pid, asin, title, listed_price, cost_exvat, amazon_shelf, vat_
     delta = amazon_shelf - base
     if delta <= max(0.05, base * 0.005):
         return None, None                                    # unchanged, cheaper, or noise
+    # OWNER'S RULE (16 Nov 2026): always pass an Amazon rise on, whatever its size; never pause because of a price; never
+    # lower a price. A big rise is still passed on - it is only mentioned, so she can look if it is the wrong variation.
     max_pct = float(os.getenv("AUTO_REPRICE_MAX_PCT", "25"))
     max_gbp = float(os.getenv("AUTO_REPRICE_MAX_GBP", "8"))
-    if delta > max_gbp or (delta > base * max_pct / 100 and delta > 2.0):   # small £ rises on cheap items are fine
-        return None, (f"Amazon price jump too big to auto-reprice (£{base:.2f} -> £{amazon_shelf:.2f}) - please check it is "
-                      f"the same variation: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
+    big = delta > max_gbp or (delta > base * max_pct / 100 and delta > 2.0)
     ad = float(os.getenv("PROMOTE_RATE", "2.0")) / 100 * 1.2 if os.getenv("PROMOTE_CAMPAIGN_ID") else 0.0
     fee = ad + (0.0 if os.getenv("EBAY_NO_SELLER_FEES") == "1" else 0.15)
     new_price = round(listed_price + delta / (1 - fee), 2)
-    return new_price, (f"Amazon £{base:.2f} -> £{amazon_shelf:.2f} (+£{delta:.2f}): eBay price £{listed_price:.2f} -> "
-                       f"£{new_price:.2f}, profit kept | {title[:50]}")
+    return new_price, (f"{'BIG rise (check it is the same variation) - ' if big else ''}Amazon £{base:.2f} -> "
+                       f"£{amazon_shelf:.2f} (+£{delta:.2f}): eBay price £{listed_price:.2f} -> £{new_price:.2f}, "
+                       f"profit kept | {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
 
 
 if __name__ == "__main__":
