@@ -25,7 +25,7 @@ MAX_ABOVE_MARKET = 1.10
 KEEP = 1 - 0.02 * 1.2                      # what is left of the price after the 2% promoted-listing fee and VAT on it
 LIST = "--list" in sys.argv
 MAX_LIST = int(sys.argv[sys.argv.index("--max") + 1]) if "--max" in sys.argv else 8
-MAX_PAGES = 26                             # product pages read in one run (memory and Amazon politeness)
+MAX_PAGES = int(sys.argv[sys.argv.index("--pages") + 1]) if "--pages" in sys.argv else 26   # pages read per run (memory, politeness)
 PLAN = "/tmp/stove_plan.json"
 
 KEYWORDS = ["camping stove", "portable gas stove", "butane stove", "cassette gas stove", "multi fuel camping stove",
@@ -95,9 +95,25 @@ try:
             continue
         todo.append((asin, c))
     # cheapest first would waste pages on cheap stoves that cannot make GBP 10: start with the dearer ones
-    todo.sort(key=lambda x: -x[1]["cost_gbp"])
+    if "--skip-judged" in sys.argv:                  # products an earlier run already read: do not spend pages on them again
+        done_before = {r["asin"] for r in json.load(open(sys.argv[sys.argv.index("--skip-judged") + 1]))}
+        todo = [(a_, c_) for a_, c_ in todo if a_ not in done_before]
+    json.dump({k: {x: y for x, y in v.items() if x != "images"} for k, v in found.items()}, open("/tmp/stove_found.json", "w"), indent=1)
+    # the product the owner named first, then the dearest
+    todo.sort(key=lambda x: (0 if "daewoo" in x[1]["title"].lower() else 1, -x[1]["cost_gbp"]))
+    print(f"{len(todo)} product(s) to read (max {MAX_PAGES})", flush=True)
+    def listing_keyword(c):
+        """The words the listing is written around. NEVER the search words: 'Daewoo induction hob' put a Daewoo name on
+        another make, and 'portable' on a built-in hob. Derived from what the Amazon title itself says."""
+        t = c["title"].lower()
+        if not HOBS:
+            return c["kw"]
+        kind = ("induction hob" if "induction" in t else "infrared cooker" if "infrared" in t else
+                "ceramic hob" if "ceramic" in t else "electric hot plate" if "hot plate" in t or "hotplate" in t else "electric hob")
+        return ("portable " if "portable" in t else "") + kind
+
     for asin, c in todo[:MAX_PAGES]:
-        kw = c["kw"]
+        kw = listing_keyword(c) if not ONLY else c["kw"]
         need = _nice((c["cost_gbp"] + MIN_PROFIT) / KEEP, True)
         row = dict(asin=asin, title=c["title"][:70], search_price=c["cost_gbp"], kw=kw, need_price=need)
         try:
@@ -118,8 +134,8 @@ try:
         row["prime_badge"] = prod.get("prime")
         if not prod.get("delivery_date"):
             row.update(verdict="skip", why="Amazon shows no delivery date on the page")
-        elif PRIME_ONLY and not (prod.get("prime") or ("free" in dtext.lower() and "first eligible" not in dtext.lower())):
-            row.update(verdict="skip", why="no Prime badge on the product page")   # free delivery 'on your first order' is not Prime
+        elif PRIME_ONLY and not prod.get("prime"):                  # strictly the Prime badge: 'FREE delivery <date>' is not enough
+            row.update(verdict="skip", why="no Prime badge on the product page")
         elif not fast:
             row.update(verdict="skip", why="not Prime and no free delivery on the product page")
         elif profit < MIN_PROFIT - 0.005:
