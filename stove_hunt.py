@@ -66,10 +66,11 @@ try:
             n_new += 1
         print(f"search '{kw}': {len(res)} result(s), {n_new} new", flush=True)
         time.sleep(1.5)
-    prime = {k: v for k, v in found.items() if v["delivery_days"] == 3}      # 3 = the Prime badge showed on the card
-    print(f"\n{len(found)} distinct products, {len(prime)} with Prime", flush=True)
+    cards_prime = sum(1 for v in found.values() if v["delivery_days"] == 3)   # 3 = the Prime badge showed on the card
+    print(f"\n{len(found)} distinct products, {cards_prime} with a Prime badge on the search card "
+          f"(the product page decides below)", flush=True)
     todo = []
-    for asin, c in prime.items():
+    for asin, c in found.items():
         if NOT_A_STOVE.search(c["title"]) or not re.search(r"\bstoves?\b|\bcookers?\b|\bburner\b", c["title"], re.I):
             rows.append(dict(asin=asin, title=c["title"][:70], verdict="skip", why="not a stove (accessory / other product)"))
             continue
@@ -93,10 +94,13 @@ try:
         profit = round(price * KEEP - shelf, 2)
         row.update(shelf=shelf, price=price, profit=profit, market=market, delivery=prod.get("delivery_text", ""),
                    delivery_date=prod.get("delivery_date"), prime=prod.get("prime"), title_full=prod["title"])
+        dtext = prod.get("delivery_text", "")
+        fast = prod.get("prime") or bool(re.search(r"prime|free", dtext, re.I))   # Prime badge, or free delivery with a date
+        row["prime_badge"] = prod.get("prime")
         if not prod.get("delivery_date"):
             row.update(verdict="skip", why="Amazon shows no delivery date on the page")
-        elif not prod.get("prime"):
-            row.update(verdict="skip", why="no Prime badge on the product page")
+        elif not fast:
+            row.update(verdict="skip", why="not Prime and no free delivery on the product page")
         elif profit < MIN_PROFIT - 0.005:
             row.update(verdict="skip", why=f"profit GBP {profit:.2f}")
         elif price > market * MAX_ABOVE_MARKET:
@@ -106,7 +110,8 @@ try:
             row["_plan"] = plan
         rows.append(row)
         print(f"  {row['verdict']:4s} {asin} Amazon £{shelf:.2f} -> eBay £{price:.2f} (profit £{profit:.2f}, market £{market:.2f}) "
-              f"delivery '{row['delivery'][:50]}' | {c['title'][:50]} | {row['why'] if row['verdict'] != 'OK' else ''}", flush=True)
+              f"prime={prod.get('prime')} due {row['delivery_date']} '{row['delivery'][:45]}' | {c['title'][:45]} | "
+              f"{row['why'] if row['verdict'] != 'OK' else ''}", flush=True)
         time.sleep(1.0)
 
     ok = [r for r in rows if r["verdict"] == "OK"]
