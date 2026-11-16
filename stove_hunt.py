@@ -37,6 +37,16 @@ NOT_A_STOVE = re.compile(r"\b(?:cover|case|bag|pouch|windshield|wind ?shield|fue
                          r"rope|rack|stand only|spare|replacement|pot|pan|kettle|cookware|mess kit|tablets?|solid fuel|"
                          r"firelighters?|bbq|barbecue|grill|pizza|fan|chimney|flue|pipe|kit)\b", re.I)
 
+HOBS = "--hobs" in sys.argv                           # portable induction hobs / cooktops / hot plates instead of stoves
+if HOBS:
+    KEYWORDS = ["Daewoo induction hob", "portable induction hob", "single induction hob", "portable induction cooktop",
+                "double induction hob portable", "portable electric hob", "electric hot plate portable",
+                "infrared cooker portable", "ceramic hob portable"]
+    NOT_A_STOVE = re.compile(NOT_A_STOVE.pattern.replace("|glass|", "|").replace("|pot|pan|", "|").replace("|kit)", ")")
+                             .replace("|fan|", "|fan|extractor|"), re.I)
+ACCEPT = re.compile(r"\bhobs?\b|\bcook ?tops?\b|\bhot ?plates?\b|\bcookers?\b|\binduction\b" if HOBS
+                    else r"\bstoves?\b|\bcookers?\b|\bburner\b", re.I)
+
 lock = open("/tmp/growth.lock", "a")
 try:
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -80,7 +90,7 @@ try:
           f"(the product page decides below)", flush=True)
     todo = []
     for asin, c in found.items():
-        if not ONLY and (NOT_A_STOVE.search(c["title"]) or not re.search(r"\bstoves?\b|\bcookers?\b|\bburner\b", c["title"], re.I)):
+        if not ONLY and (NOT_A_STOVE.search(c["title"]) or not ACCEPT.search(c["title"])):
             rows.append(dict(asin=asin, title=c["title"][:70], verdict="skip", why="not a stove (accessory / other product)"))
             continue
         todo.append((asin, c))
@@ -108,8 +118,8 @@ try:
         row["prime_badge"] = prod.get("prime")
         if not prod.get("delivery_date"):
             row.update(verdict="skip", why="Amazon shows no delivery date on the page")
-        elif PRIME_ONLY and not prod.get("prime"):
-            row.update(verdict="skip", why="no Prime badge on the product page")
+        elif PRIME_ONLY and not (prod.get("prime") or ("free" in dtext.lower() and "first eligible" not in dtext.lower())):
+            row.update(verdict="skip", why="no Prime badge on the product page")   # free delivery 'on your first order' is not Prime
         elif not fast:
             row.update(verdict="skip", why="not Prime and no free delivery on the product page")
         elif profit < MIN_PROFIT - 0.005:
