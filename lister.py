@@ -142,6 +142,9 @@ def clean_text(text: str) -> str:
         text = text.replace(bad, good)
     # Nothing on the eBay account may point at where the stock comes from: 'works with Amazon Alexa' -> 'works with Alexa'
     text = re.sub(r"\bAmazon\s+(Alexa|Echo|Fire|Kindle)\b", r"\1", text, flags=re.I)
+    # Amazon's own house brand ('Amazon Basics', 'AmazonBasics', 'Amazon Essentials', 'by Amazon') and any remaining 'Amazon'
+    text = re.sub(r"\b(?:by\s+)?Amazon\s*(?:Basics|Essentials|Commercial|Elements|Collection|Brand)\b[\s,:-]*", "", text, flags=re.I)
+    text = re.sub(r"\bAmazon\b[\s,:-]*", "", text, flags=re.I)
     return text
 
 
