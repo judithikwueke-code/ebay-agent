@@ -249,7 +249,7 @@ def quantity_for_price(price) -> int:
         p = float(price)
     except (TypeError, ValueError):
         return DEFAULT_LISTING_QUANTITY
-    tier = 5 if p <= 40 else 3 if p <= 100 else 2 if p <= 150 else 1
+    tier = 2 if p <= 25 else 3 if p <= 100 else 2 if p <= 150 else 1
     return max(1, min(DEFAULT_LISTING_QUANTITY, tier))
 
 # --- eBay fee model (UK) ---
