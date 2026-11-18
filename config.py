@@ -372,10 +372,10 @@ SUPPLIER_TRACKING_HOURS = 4
 CATEGORIES = {
     # In season (Christmas): ranked ahead of everything else, cheap items allowed, crowded markets allowed
     "seasonal":           {"id": "", "weight": 3.0, "fee_key": "everything_else",
-                            "min_price": 2.5, "max_price": 80.0, "max_competitors": 30000,
+                            "min_price": 25.0, "max_price": 80.0, "max_competitors": 30000,
                             "leaf_id": "66861"},
     "terapeak":           {"id": "", "weight": 1.6, "fee_key": "everything_else",
-                            "min_price": 3.0, "max_price": 150.0,
+                            "min_price": 25.0, "max_price": 150.0,
                             "leaf_id": "66861"},   # keywords from Terapeak sold data (no category filter)
     "furniture":          {"id": "175758", "weight": 1.5, "fee_key": "furniture",
                             "min_price": 50.0, "max_price": 600.0},
@@ -385,37 +385,37 @@ CATEGORIES = {
     # lister.py uses the Taxonomy API to resolve a leaf_id per product title at listing time.
     # leaf_id is the fallback leaf category when the Taxonomy API fails.
     "home_appliances":    {"id": "20713", "weight": 1.2, "fee_key": "appliances_diy_tools",
-                            "min_price": 20.0, "max_price": 400.0,
+                            "min_price": 25.0, "max_price": 400.0,
                             "leaf_id": "133705"},   # Kettles
     "tools_hardware":     {"id": "631",   "weight": 1.1, "fee_key": "appliances_diy_tools",
-                            "min_price": 10.0, "max_price": 300.0,
+                            "min_price": 25.0, "max_price": 300.0,
                             "leaf_id": "147809"},   # Laser Measurers
     "auto_parts":         {"id": "6030",  "weight": 1.1, "fee_key": "vehicle_parts_accessories",
-                            "min_price": 10.0, "max_price": 300.0,
+                            "min_price": 25.0, "max_price": 300.0,
                             "leaf_id": "179476"},   # Code Readers & Scanners
     "sports_fitness":     {"id": "888",   "weight": 1.0, "fee_key": "sporting_goods",
-                            "min_price": 10.0, "max_price": 300.0,
+                            "min_price": 25.0, "max_price": 300.0,
                             "leaf_id": "79759"},    # Resistance Bands & Expanders
     "health_devices":     {"id": "67588", "weight": 1.0, "fee_key": "health_beauty",
-                            "min_price": 5.0,  "max_price": 150.0,
+                            "min_price": 25.0,  "max_price": 150.0,
                             "leaf_id": "36449"},    # Massagers
     "garden_outdoor":     {"id": "159912","weight": 0.4, "fee_key": "garden_patio",
-                            "min_price": 15.0, "max_price": 400.0,
+                            "min_price": 25.0, "max_price": 400.0,
                             "leaf_id": "20509"},    # Garden Lighting Accessories
     "home_living":        {"id": "11700",  "weight": 1.1, "fee_key": "everything_else",
-                            "min_price": 8.0,  "max_price": 200.0,
+                            "min_price": 25.0,  "max_price": 200.0,
                             "leaf_id": "66861"},    # Home Decor
     "tech_accessories":   {"id": "58058",  "weight": 1.2, "fee_key": "everything_else",
-                            "min_price": 8.0,  "max_price": 200.0,
+                            "min_price": 25.0,  "max_price": 200.0,
                             "leaf_id": "80053"},    # Phone Cases & Covers
     "pet_supplies":       {"id": "1281",   "weight": 1.0, "fee_key": "everything_else",
-                            "min_price": 8.0,  "max_price": 150.0,
+                            "min_price": 25.0,  "max_price": 150.0,
                             "leaf_id": "46655"},    # Dog Beds
     "baby_kids":          {"id": "2",      "weight": 1.0, "fee_key": "everything_else",
-                            "min_price": 8.0,  "max_price": 150.0,
+                            "min_price": 25.0,  "max_price": 150.0,
                             "leaf_id": "19169"},    # Baby Monitors
     "office_stationery":  {"id": "26395",  "weight": 1.0, "fee_key": "everything_else",
-                            "min_price": 8.0,  "max_price": 150.0,
+                            "min_price": 25.0,  "max_price": 150.0,
                             "leaf_id": "26395"},    # Office Equipment
 }
 

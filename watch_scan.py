@@ -30,6 +30,8 @@ MIN_WATCHERS = int(os.getenv("WATCH_MIN_WATCHERS", "100"))
 MIN_PROFIT = float(os.getenv("MIN_PROFIT_AT_P25", "2"))
 # Items pushed by the market radar (source='radar'): eBay listings MEASURED to be selling fast
 RADAR_MIN_RATE = float(os.getenv("RADAR_MIN_RATE", "1.0"))           # sales/day needed (half of it from GBP 60 up)
+PRICE_FOR_PROFIT = os.getenv("RADAR_PRICE_FOR_PROFIT", "1") == "1"      # owner, 18 Nov: price for OUR profit, never match the eBay seller
+RADAR_MAX_OVER_RIVAL = float(os.getenv("RADAR_MAX_OVER_RIVAL", "2.0"))   # sanity only: above this multiple of the fast seller it is probably another product
 RADAR_MIN_PROFIT = float(os.getenv("RADAR_MIN_PROFIT", "3"))         # GBP per sale at the fast seller's price
 RADAR_UNDERCUT = float(os.getenv("RADAR_UNDERCUT_PCT", "3")) / 100   # go this far under that price when profit allows
 RADAR_EQUIV = os.getenv("RADAR_EQUIV", "1") == "1"                   # no exact match: list the closest equivalent
@@ -497,6 +499,8 @@ def _process_radar(it: dict, why: str, dry: bool) -> str:
     max_price = (ref - 0.36) / 1.0413                            # our price if we match them exactly
     under = (ref * (1 - RADAR_UNDERCUT) - 0.36) / 1.0413         # our price if we go a little under them
     max_cost = max_price * keep - RADAR_MIN_PROFIT               # most Amazon can cost (delivered)
+    if PRICE_FOR_PROFIT:                                         # price for our profit: allow up to the sanity multiple of their price
+        max_cost = max_price * RADAR_MAX_OVER_RIVAL * keep - RADAR_MIN_PROFIT
     pool: list = []
     match, how = find_amazon_match(it, pool, max_cost)
     if match and match["cost_gbp"] + match["shipping_gbp"] > max_cost:
@@ -519,6 +523,8 @@ def _process_radar(it: dict, why: str, dry: bool) -> str:
         """Just under the fast seller, never under our minimum profit - and for a merely similar product never far
         above what it costs (a GBP 20 mini safe was listed at GBP 59.99 because the seller's LARGE one costs 64.90)."""
         floor = _nice((c + RADAR_MIN_PROFIT) / keep, True)
+        if PRICE_FOR_PROFIT:
+            return floor
         p = max(_nice(under, False), floor)
         return max(min(p, _nice(c * RADAR_EQUIV_MAX_MARKUP, False)), floor) if equiv else p
 
@@ -543,9 +549,9 @@ def _process_radar(it: dict, why: str, dry: bool) -> str:
         _set(it["item_id"], "not_listed", str(e))
         return f"not listed: {e}"
     real = plan["shelf"] + plan["prod"]["shipping_gbp"] * (1 + VAT_RATE)   # real product-page price, delivered
-    if (real + RADAR_MIN_PROFIT) / keep > max_price + 0.01:
-        note = (f"product page GBP {real:.2f} delivered; can only sell at GBP {max_price:.2f}: "
-                f"under GBP {RADAR_MIN_PROFIT:.0f} profit after the ad fee")
+    if (real + RADAR_MIN_PROFIT) / keep > max_price * (RADAR_MAX_OVER_RIVAL if PRICE_FOR_PROFIT else 1.0) + 0.01:
+        note = (f"product page GBP {real:.2f} delivered; needs GBP {(real + RADAR_MIN_PROFIT) / keep:.2f} for the profit, "
+                f"too far above the fast seller's GBP {max_price:.2f} to be the same kind of product")
         _set(it["item_id"], "not_viable", note)
         return note
     if not same_numbers(it["title"], plan["prod"]["title"]):

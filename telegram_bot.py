@@ -50,24 +50,25 @@ def _parts(msg: str, limit: int = _TG_LIMIT) -> list:
     return out
 
 
-def _send(msg: str, silent: bool = False):
+def _send(msg: str, silent: bool = False, preview: bool = False):
+    """preview=True lets Telegram expand links into a card with the product photo (only the order alert wants that)."""
     label = os.getenv("ACCOUNT_LABEL")
     if label:                                     # which account's agent is talking
         msg = f"[{label}] " + msg
     parts = _parts(msg) or [msg]
     ok = True
     for n, part in enumerate(parts, 1):
-        ok = _send_one(f"({n}/{len(parts)}) {part}" if len(parts) > 1 else part, silent) and ok
+        ok = _send_one(f"({n}/{len(parts)}) {part}" if len(parts) > 1 else part, silent, preview) and ok
     return ok
 
 
-def _send_one(msg: str, silent: bool = False):
+def _send_one(msg: str, silent: bool = False, preview: bool = False):
     import time
     for attempt in range(1, 4):
         try:
             r = requests.post(
                 f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                json={"chat_id": CHAT_ID, "text": msg, "disable_notification": silent},
+                json={"chat_id": CHAT_ID, "text": msg, "disable_notification": silent, "disable_web_page_preview": not preview},
                 timeout=15,
             )
             if r.ok:
@@ -254,7 +255,7 @@ def alert_new_order(title: str, sale: float, profit: float, buyer: str, quantity
                   f"  Phone: {address.get('phone', '') or 'not given'}"]
     if supplier in ("amazon", "sportsdirect") and ebay_order_id:
         lines += ["", f"After it ships, add tracking: python upload_tracking.py {ebay_order_id} TRACKING 'Royal Mail'"]
-    _send(chr(10).join(lines))
+    _send(chr(10).join(lines), preview=True)          # the order alert keeps the product photo card
 
 
 def alert_stock_issue(title: str, ebay_id: str, issue: str):
