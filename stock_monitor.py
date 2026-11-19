@@ -96,6 +96,19 @@ def _report_notes(started: str = ""):
     if not lines:
         return
     changes = sum(1 for x in lines if "WARNING" not in x)
+    if os.getenv("TELEGRAM_PRICE_ALERTS", "0") != "1":          # owner, 19 Nov: price/stock changes are not wanted on Telegram
+        lines = [x for x in lines if "WARNING" in x]            # only real problems (unread pages, robot checks) still go out
+        changes = 0
+        if not lines:
+            try:
+                conn = sqlite3.connect(DB_PATH, timeout=20)
+                conn.executemany("UPDATE monitor_notes SET sent=1 WHERE id=?", [(r[0],) for r in rows])
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                log.warning(f"could not tick off the monitor notes: {e}")
+            del _unkept[:]
+            return
     if not _send_telegram(f"AMAZON STOCK/PRICE - {changes} change(s):\n" + "\n".join("- " + x for x in lines)):
         return                                   # kept as unsent: the next run reports them
     del _unkept[:]

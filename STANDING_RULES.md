@@ -42,3 +42,8 @@ read them first. If an instruction is not here it is not a rule yet: add it the 
 - Dentalife: title change, barcode (EAN), pouch weight, postage cost per bundle.
 - Which paused hobs/premium items (paused_review) return to sale; whether to delete the account-3 token backup.
 - Server upgrade (memory is the main bottleneck); Telegram alerts instead of the broken email.
+
+## Telegram (owner, 19 Nov 2026)
+- NOT wanted: price/stock change digests, "NEW LISTING LIVE" alerts, "RESEARCH CYCLE COMPLETE", per-hunt "listed" messages.
+  (switches: TELEGRAM_PRICE_ALERTS=1 / TELEGRAM_LISTING_ALERTS=1 in .env bring them back)
+- Still sent: ORDER RECEIVED, real problems (WARNING lines, rule breaks), the 3 scoreboard reports a day, the radar digest.

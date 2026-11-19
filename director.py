@@ -355,7 +355,7 @@ def main():
     print(text, flush=True)
     slot = f"rep-{today}-{hour}"
     due = hour in REPORT_HOURS and slot not in st["reported"]          # the scoreboard goes out once in each report hour
-    send = FORCE or alerts or (hunt and hunt[2]) or due
+    send = FORCE or alerts or due                                  # owner, 19 Nov: no per-hunt 'listed' messages
     if due:
         st["reported"] = {k: v for k, v in st["reported"].items() if k == "open" or today in k}
         st["reported"][slot] = 1

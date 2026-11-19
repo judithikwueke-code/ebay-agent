@@ -216,6 +216,8 @@ def evening_summary():
 
 
 def alert_new_listing(title: str, price: float, margin: float, supplier: str, ebay_id: str):
+    if os.getenv("TELEGRAM_LISTING_ALERTS", "0") != "1":     # owner, 19 Nov: new-listing alerts are not wanted
+        return
     _send(
         f"NEW LISTING LIVE\n"
         f"  {title[:50]}\n"
@@ -269,6 +271,8 @@ def alert_stock_issue(title: str, ebay_id: str, issue: str):
 
 
 def alert_research_done(listed: int, skipped: int, cap: int):
+    if os.getenv("TELEGRAM_LISTING_ALERTS", "0") != "1":
+        return
     _send(
         f"RESEARCH CYCLE COMPLETE\n"
         f"  New listings: {listed}/{cap}\n"
