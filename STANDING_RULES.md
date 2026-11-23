@@ -52,3 +52,4 @@ read them first. If an instruction is not here it is not a rule yet: add it the 
 - order_reporter.py (cron every 3 min, log order_reporter.log) reports ONLY new orders and cancellations/refunds. It never buys, ships or edits.
 - Each detail (name, phone, address, postcode) is its own tap-to-copy line. eBay Collection Point orders (address contains eCP:XXXXXXXX) start with a bold ECP banner and the ECP number in its own copy block.
 - It replaces the old ORDER RECEIVED / ORDER CANCELLED / unknown-listing alerts (LEGACY_ORDER_ALERTS=0 in .env switches the old ones off; =1 brings them back). Includes the Amazon buy link and quantity.
+- LLM: the "Anthropic credits are exhausted" notice is off (LLM_CREDIT_ALERTS=1 brings it back); a WARNING is sent if EVERY AI provider fails (owner, 23 Nov).

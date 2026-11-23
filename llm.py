@@ -79,10 +79,10 @@ def _retry_after(r, default: float = 30.0) -> float:
     return min(max(wait if wait is not None else default, 2.0), 900.0)
 
 
-def _tell_owner(msg: str):
-    """At most one Telegram note per 6 hours."""
+def _tell_owner(msg: str, kind: str = ""):
+    """At most one Telegram note per 6 hours (per kind)."""
     try:
-        stamp = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".llm_alert")
+        stamp = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".llm_alert" + kind)
         if os.path.exists(stamp) and time.time() - os.path.getmtime(stamp) < 6 * 3600:
             return
         open(stamp, "w").write("1")
@@ -231,8 +231,9 @@ def complete(prompt: str, max_tokens: int = 1000, model: str | None = None, imag
                 if provider == "anthropic":
                     if "credit balance" in msg:
                         _down_until[provider] = time.time() + 1800
-                        _tell_owner("Anthropic credits are exhausted - the agent is using its free AI providers (Groq, "
-                                    "Gemini) instead. Top up at console.anthropic.com > Billing to switch back to Claude.")
+                        if os.getenv("LLM_CREDIT_ALERTS", "0") == "1":      # owner (23 Nov): not wanted, the fallback works
+                            _tell_owner("Anthropic credits are exhausted - the agent is using its free AI providers (Groq, "
+                                        "Gemini) instead. Top up at console.anthropic.com > Billing to switch back to Claude.")
                     elif "authentication" in msg.lower() or "invalid x-api-key" in msg.lower():
                         _down_until[provider] = time.time() + 1800
                         _tell_owner("The Anthropic API key was rejected - using Groq / Gemini instead.")
@@ -241,6 +242,8 @@ def complete(prompt: str, max_tokens: int = 1000, model: str | None = None, imag
             continue
         break
     last_failure = time.time()
+    _tell_owner("WARNING: every AI provider failed (Claude, Groq and Gemini), so listing text and product matching "
+                "are paused until one recovers: " + " | ".join(errors)[:300], kind="_all")
     raise RuntimeError("all LLM providers failed: " + " | ".join(errors))
 
 
