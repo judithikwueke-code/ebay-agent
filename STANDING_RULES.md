@@ -53,3 +53,7 @@ read them first. If an instruction is not here it is not a rule yet: add it the 
 - Each detail (name, phone, address, postcode) is its own tap-to-copy line. eBay Collection Point orders (address contains eCP:XXXXXXXX) start with a bold ECP banner and the ECP number in its own copy block.
 - It replaces the old ORDER RECEIVED / ORDER CANCELLED / unknown-listing alerts (LEGACY_ORDER_ALERTS=0 in .env switches the old ones off; =1 brings them back). Includes the Amazon buy link and quantity.
 - LLM: the "Anthropic credits are exhausted" notice is off (LLM_CREDIT_ALERTS=1 brings it back); a WARNING is sent if EVERY AI provider fails (owner, 23 Nov).
+
+## Dentalife CPC campaign (owner approved 23 Nov 2026)
+- Campaign 169735020016 "Dentalife keyword test": daily budget stays GBP 3. Bids approved: up to GBP 0.45 exact / 0.35 phrase (raised 23 Nov from 0.25 / 0.20). 15 keywords, ads: bundle 366814763416 + pack of 8 (366819643483, also still in the 5% general campaign).
+- Review on 26 Nov 19:30 UTC (ad_check --once sends it to Telegram): drop keywords with clicks but no sales, keep the ones that convert. Raising bids above the approved levels needs her approval.
