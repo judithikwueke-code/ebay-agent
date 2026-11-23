@@ -263,6 +263,12 @@ def report(sb, promo, hunt, alerts, text_found, ideas, open_items):
         L += ["", f"HUNT: none this loop (lock busy, memory short, daily limit, or eBay search quota {sb.get('quota')} below {QUOTA_FLOOR})"]
     if promo is not None:
         L += [f"PROMOTION: {promo[0]} high-value listing(s) raised to {PROMO_RATE:.0f}% ({promo[1]})"]
+    try:
+        a = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ad_dentalife.json")))
+        L += [f"DENTALIFE GBP 3/day campaign since {a['since']}: GBP {a['spent']:.2f} spent | {a['impressions']} impressions | "
+              f"{a['clicks']} clicks | {a['sales']} sale(s) (eBay figures, as of {a['updated']}; click charges can lag 72h)"]
+    except Exception:
+        pass
     if alerts:
         L += ["", "RULE BREAKS TO LOOK AT:"] + ["  ! " + a for a in alerts[:10]]
     if text_found is not None:

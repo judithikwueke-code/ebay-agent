@@ -30,6 +30,7 @@ B = "https://api.ebay.com/sell/marketing/v1"
 H = dict(sm._sell_headers())
 H["Content-Language"] = "en-GB"
 lines = []
+TOTALS = {}
 
 
 def out(s=""):
@@ -57,7 +58,7 @@ ASKED = {}                      # report type -> (task id, error): all reports a
 DEADLINE = [0.0]                # one shared time limit for waiting on eBay's reports
 
 
-def ask(rtype, dims, metrics, days=3):
+def ask(rtype, dims, metrics, days=30):
     now = datetime.datetime.now(datetime.timezone.utc)
     body = {"campaignIds": [CAMPAIGN], "marketplaceId": "EBAY_GB", "reportType": rtype, "reportFormat": "TSV_GZIP",
             "dateFrom": (now - datetime.timedelta(days=days)).strftime("%Y-%m-%dT00:00:00.000Z"),
@@ -71,7 +72,7 @@ def ask(rtype, dims, metrics, days=3):
         ASKED[rtype] = ((r.headers.get("Location") or "").rstrip("/").split("/")[-1], None)
 
 
-def report(rtype, dims, metrics, days=3):
+def report(rtype, dims, metrics, days=30):
     if rtype not in ASKED:
         ask(rtype, dims, metrics, days)
     tid, err = ASKED[rtype]
@@ -119,9 +120,10 @@ def campaign():
             out("  " + " | ".join(f"{k}={v}" for k, v in r.items() if k in ("day",) + tuple(metrics)))
             for m in tot:
                 try:
-                    tot[m] += float(r.get(m) or 0)
+                    tot[m] += float(str(r.get(m) or 0).replace("GBP", "").strip())      # eBay writes money as "GBP 0.20"
                 except ValueError:
                     pass
+        TOTALS.update(tot)
         if rows:
             out(f"  TOTAL: {tot['cpc_impressions']:.0f} impressions, {tot['cpc_clicks']:.0f} clicks, "
                 f"£{tot['cpc_ad_fees_listingsite_currency']:.2f} spent, {tot['cpc_attributed_sales']:.0f} sale(s)")
@@ -156,6 +158,8 @@ def sold():
     out(f"\nSOLD since the campaign started: {n} bundle(s) of the Dentalife listing")
 
 
+d_json = "/var/www/ebay-agent-2/ad_dentalife.json"
+
 if __name__ == "__main__":
     out(f"AD CHECK {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%d %H:%M} UTC - Purina Dentalife keyword campaign")
     for step in (position, campaign, sold):
@@ -163,6 +167,11 @@ if __name__ == "__main__":
             step()
         except Exception as e:
             out(f"  ({step.__name__} failed: {e})")
+    if "--json" in sys.argv and TOTALS:           # read by the director's scoreboard report
+        json.dump({"updated": datetime.datetime.now(datetime.timezone.utc).strftime("%d %b %H:%M UTC"), "since": "16 Nov",
+                   "impressions": int(TOTALS.get("cpc_impressions", 0)), "clicks": int(TOTALS.get("cpc_clicks", 0)),
+                   "spent": round(TOTALS.get("cpc_ad_fees_listingsite_currency", 0), 2),
+                   "sales": int(TOTALS.get("cpc_attributed_sales", 0))}, open(d_json, "w"))
     if "--telegram" in sys.argv or "--once" in sys.argv:
         try:
             from telegram_bot import _send
