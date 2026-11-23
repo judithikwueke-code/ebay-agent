@@ -141,7 +141,9 @@ def build_order_msg(order: dict) -> str:
     oid = order.get("orderId", "")
     out = []
     if a["ecp"]:
-        out += ["🚨🚨 <b>ECP — EBAY COLLECTION POINT ORDER</b> 🚨🚨", f"<b>ECP NUMBER:</b> {copy(a['ecp'])}", ""]
+        out += ["🚨🚨 <b>ECP — EBAY COLLECTION POINT ORDER</b> 🚨🚨", f"<b>ECP NUMBER:</b> {copy(a['ecp'])}",
+                "<b>⚠ Put the FULL address, including the ECP number, in the supplier's address lines. "
+                "Without it the parcel can't be collected.</b>", ""]
     out.append(f"<b>NEW ORDER</b>{(' [' + esc(LABEL) + ']') if LABEL else ''}")
     for it in items:
         lid = it.get("legacyItemId") or ""
