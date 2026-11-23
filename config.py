@@ -250,7 +250,9 @@ def quantity_for_price(price) -> int:
     except (TypeError, ValueError):
         return DEFAULT_LISTING_QUANTITY
     tier = 2 if p <= 25 else 3 if p <= 100 else 2 if p <= 150 else 1
-    return max(1, min(DEFAULT_LISTING_QUANTITY, tier))
+    # owner, 23 Nov 2026: one unit per listing (selling limit); the hourly restock refills a sold listing back to 1
+    cap = int(os.getenv("LISTING_QTY_CAP", "99") or 99)
+    return max(1, min(DEFAULT_LISTING_QUANTITY, tier, cap))
 
 # --- eBay fee model (UK) ---
 # Final value fee varies by category — some are flat %, some tiered by sale
