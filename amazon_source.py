@@ -910,9 +910,19 @@ def _get_product(asin: str) -> dict | None:
             in_stock = page.locator("#add-to-cart-button, #buy-now-button").count() > 0 and "unavailable" not in avail
             prime = page.locator("i.a-icon-prime").count() > 0
             dl = _delivery_estimate(page)                # the date Amazon actually promises, not a guess from a badge
+            # Delivery cost (owner, 23 Nov 2026): the agent's browser is not signed in to Prime, so the badge is often missing even
+            # when the page says FREE delivery (the owner has Prime). Read the delivery line instead of assuming GBP 3.99.
+            _dtxt = dl.get("text") or ""
+            _fee = re.search(r"[\u00a3]\s?(\d+(?:\.\d\d)?)\s+(?:delivery|postage|shipping)", _dtxt, re.I)
+            if prime or re.search(r"FREE\s+(?:UK\s+)?[Dd]elivery", _dtxt):
+                _ship = 0.0
+            elif _fee:
+                _ship = float(_fee.group(1))
+            else:
+                _ship = DEFAULT_PAID_DELIVERY_GBP
             return {
                 "supplier": "amazon", "product_id": asin, "title": title,
-                "cost_gbp": price or 0.0, "shipping_gbp": 0.0 if prime else DEFAULT_PAID_DELIVERY_GBP,
+                "cost_gbp": price or 0.0, "shipping_gbp": _ship,
                 "delivery_days": dl["days"] if dl["days"] is not None else (3 if prime else 5), "images": images[:8],
                 "description": " ".join(bullets), "uk_warehouse": True, "in_stock": in_stock,
                 "aspects": aspects, "prime": prime, "delivery_text": dl["text"], "delivery_date": dl["date"],
