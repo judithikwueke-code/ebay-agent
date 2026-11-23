@@ -57,3 +57,4 @@ read them first. If an instruction is not here it is not a rule yet: add it the 
 ## Dentalife CPC campaign (owner approved 23 Nov 2026)
 - Campaign 169735020016 "Dentalife keyword test": daily budget stays GBP 3. Bids approved: up to GBP 0.45 exact / 0.35 phrase (raised 23 Nov from 0.25 / 0.20). 15 keywords, ads: bundle 366814763416 + pack of 8 (366819643483, also still in the 5% general campaign).
 - Review on 26 Nov 19:30 UTC (ad_check --once sends it to Telegram): drop keywords with clicks but no sales, keep the ones that convert. Raising bids above the approved levels needs her approval.
+- Quantity: 1 unit per listing (LISTING_QTY_CAP=1); a listing that has sold 2 units in one order, or 2 orders within an hour, may show 2 (config.sold_two, owner 23 Nov). Own-stock items (Dentalife) are not capped.

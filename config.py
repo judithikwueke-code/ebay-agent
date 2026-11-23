@@ -241,7 +241,25 @@ AMAZON_FREE_DELIVERY = os.getenv("AMAZON_FREE_DELIVERY", "0") == "1"
 DEFAULT_LISTING_QUANTITY = int(os.getenv("DEFAULT_LISTING_QUANTITY", "5"))
 
 
-def quantity_for_price(price) -> int:
+def sold_two(pid) -> bool:
+    """Owner, 23 Nov 2026: a listing that has sold 2 units in one order, or has had 2 orders within an hour, may show 2 units."""
+    try:
+        import sqlite3
+        from db import DB_PATH
+        c = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=10)
+        n = c.execute("select count(*) from orders where product_id=? and status!='cancelled' and quantity>=2", (pid,)).fetchone()[0]
+        if not n:
+            n = c.execute("""select count(*) from orders a join orders b on a.product_id=b.product_id and a.id<b.id
+                             and a.status!='cancelled' and b.status!='cancelled'
+                             and abs(strftime('%s',a.created_at)-strftime('%s',b.created_at))<=3600
+                             where a.product_id=?""", (pid,)).fetchone()[0]
+        c.close()
+        return bool(n)
+    except Exception:
+        return False
+
+
+def quantity_for_price(price, pid=None) -> int:
     """Units to show on a listing at this price. eBay's monthly selling limit (GBP 37,800 here) counts quantity x price of
     everything listed PLUS what has already sold this month - 5 units of a GBP 296 hob uses as much of it as 74 of a GBP 20 item
     and a full limit blocks every new listing and re-enabling (found 16 Nov 2026). Dear items therefore show fewer units."""
@@ -252,6 +270,8 @@ def quantity_for_price(price) -> int:
     tier = 2 if p <= 25 else 3 if p <= 100 else 2 if p <= 150 else 1
     # owner, 23 Nov 2026: one unit per listing (selling limit); the hourly restock refills a sold listing back to 1
     cap = int(os.getenv("LISTING_QTY_CAP", "99") or 99)
+    if pid is not None and cap < 2 and sold_two(pid):
+        cap = 2                      # proven double seller (owner rule, 23 Nov 2026)
     return max(1, min(DEFAULT_LISTING_QUANTITY, tier, cap))
 
 # --- eBay fee model (UK) ---

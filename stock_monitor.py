@@ -438,7 +438,7 @@ def _amazon_monitor_run(fresh_minutes: int = 0):
                 else:
                     note(f"{reason} but eBay pause FAILED: {title[:50]} | https://www.amazon.co.uk/dp/{asin}?th=1&psc=1")
             elif status != "active" and viable:
-                if _set_ebay_quantity(sku, quantity_for_price(listed_price)):
+                if _set_ebay_quantity(sku, quantity_for_price(listed_price, pid)):
                     _update_status(pid, "active")
                     note(f"Back in stock at GBP {res['price']:.2f}, re-enabled: {title[:50]}")
             time.sleep(random.uniform(2, 4))
@@ -487,7 +487,7 @@ def replenish_amazon_stock():
             continue
         qty = offers[0].get("availableQuantity") if offers else None
         from config import quantity_for_price
-        if qty is not None and qty < min(target, quantity_for_price(listed)):    # dear items stay at their lower quantity
+        if qty is not None and qty < min(target, quantity_for_price(listed, pid)):    # dear items stay at their lower quantity
             low.append((pid, asin, title, listed, sku, qty))
     if not low:
         return
@@ -508,7 +508,7 @@ def replenish_amazon_stock():
                 log.info(f"Replenish: {title[:40]} - Amazon price {res['price']} leaves no margin, left at {qty}")
                 continue
             from config import quantity_for_price
-            n = min(target, quantity_for_price(listed), res.get("max_qty") or target)
+            n = min(target, quantity_for_price(listed, pid), res.get("max_qty") or target)
             if n > qty:
                 if _set_ebay_quantity(sku, n):
                     log.info(f"Replenish: {title[:40]} {qty} -> {n}")
