@@ -47,3 +47,8 @@ read them first. If an instruction is not here it is not a rule yet: add it the 
 - NOT wanted: price/stock change digests, "NEW LISTING LIVE" alerts, "RESEARCH CYCLE COMPLETE", per-hunt "listed" messages.
   (switches: TELEGRAM_PRICE_ALERTS=1 / TELEGRAM_LISTING_ALERTS=1 in .env bring them back)
 - Still sent: ORDER RECEIVED, real problems (WARNING lines, rule breaks), the 3 scoreboard reports a day, the radar digest.
+
+## Order & cancellation reporter (owner, 23 Nov 2026)
+- order_reporter.py (cron every 3 min, log order_reporter.log) reports ONLY new orders and cancellations/refunds. It never buys, ships or edits.
+- Each detail (name, phone, address, postcode) is its own tap-to-copy line. eBay Collection Point orders (address contains eCP:XXXXXXXX) start with a bold ECP banner and the ECP number in its own copy block.
+- It replaces the old ORDER RECEIVED / ORDER CANCELLED / unknown-listing alerts (LEGACY_ORDER_ALERTS=0 in .env switches the old ones off; =1 brings them back). Includes the Amazon buy link and quantity.

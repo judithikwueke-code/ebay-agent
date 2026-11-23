@@ -23,6 +23,9 @@ OPEN = ("pending", "placed", "failed_placement", "needs_delivery_review")
 
 
 def _telegram(msg: str):
+    import os
+    if os.getenv("LEGACY_ORDER_ALERTS", "1") == "0":      # order_reporter.py reports cancellations now
+        return
     try:
         from telegram_bot import _send
         _send(msg)

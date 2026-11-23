@@ -197,7 +197,7 @@ def process_new_orders():
             product = get_product_by_listing(listing_id)
             if not product:
                 log.warning(f"Order {ebay_order_id}: listing {listing_id} not in DB — manual review needed")
-                if not _already_alerted(ebay_order_id, listing_id):
+                if os.getenv("LEGACY_ORDER_ALERTS", "1") != "0" and not _already_alerted(ebay_order_id, listing_id):
                     try:
                         from telegram_bot import _send
                         a = buyer_address

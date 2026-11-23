@@ -230,6 +230,8 @@ def alert_new_listing(title: str, price: float, margin: float, supplier: str, eb
 def alert_new_order(title: str, sale: float, profit: float, buyer: str, quantity: int = 1,
                     supplier: str = "", source_url: str = "", address: dict | None = None,
                     ebay_order_id: str = "", cost_total: float | None = None, fees: float | None = None):
+    if os.getenv("LEGACY_ORDER_ALERTS", "1") == "0":      # order_reporter.py sends the order message now
+        return
     lines = [
         "ORDER RECEIVED!",
         f"  {title[:60]}",
